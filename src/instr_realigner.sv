@@ -28,225 +28,307 @@ module instr_realigner (
     output logic                   fetch_entry_valid_o,
     input  logic                   fetch_ack_i
 );
-    // ----------
-    // Registers
-    // ----------
-    // the last instruction was unaligned
-    logic        unaligned_n,         unaligned_q;
-    // save the unaligned part of the instruction to this ff
-    logic [15:0] unaligned_instr_n,   unaligned_instr_q;
-    // the previous instruction was compressed
-    logic        compressed_n,        compressed_q;
-    // register to save the unaligned address
-    logic [63:0] unaligned_address_n, unaligned_address_q;
-    // get the next instruction, needed on a unaligned access
-    logic jump_unaligned_half_word;
 
-    // check if the lower compressed instruction was no branch otherwise we will need to squash this instruction
-    // but only if we predicted it to be taken, the predict was on the lower 16 bit compressed instruction
-    logic kill_upper_16_bit;
-    assign kill_upper_16_bit = fetch_entry_i.branch_predict.valid &
-                               fetch_entry_i.branch_predict.predict_taken &
-                               fetch_entry_i.bp_taken[0];
-    // ----------
-    // Registers
-    // ----------
-    always_comb begin : realign_instr
+    logic en;
+    logic [INSTR_PER_FETCH-1:0] instr_vld;
+    logic [INSTR_PER_FETCH-1:0] instr_vld_bp_masked;
 
-        unaligned_n          = unaligned_q;
-        unaligned_instr_n    = unaligned_instr_q;
-        compressed_n         = compressed_q;
-        unaligned_address_n  = unaligned_address_q;
+    logic [INSTR_PER_FETCH-1:0][63:0] addr_o;
+    logic [INSTR_PER_FETCH-1:0][31:0] instr_o;
+    // remember the index of the instruction we are currently serving
+    logic [$clog2(INSTR_PER_FETCH)-1:0] idx_d, idx_q;
 
-        // directly output this instruction. adoptions are made throughout the always comb block
-        fetch_entry_o.address        = fetch_entry_i.address;
-        fetch_entry_o.instruction    = fetch_entry_i.instruction;
-        fetch_entry_o.branch_predict = fetch_entry_i.branch_predict;
-        fetch_entry_o.ex.valid       = fetch_entry_i.page_fault;
-        fetch_entry_o.ex.tval        = (fetch_entry_i.page_fault) ? fetch_entry_i.address : '0;
-        fetch_entry_o.ex.cause       = (fetch_entry_i.page_fault) ? riscv::INSTR_PAGE_FAULT : '0;
+    instr_realign i_instr_realign (
+        .clk_i     ( clk_i                      ),
+        .rst_ni    ( rst_ni                     ),
+        .flush_i   ( flush_i                    ),
+        .en_i      ( en                         ),
+        .valid_i   ( fetch_entry_valid_i        ),
+        .address_i ( fetch_entry_i.address      ),
+        .taken_i   ( fetch_entry_i.branch_taken ),
+        .data_i    ( fetch_entry_i.instruction  ),
+        .valid_o   ( instr_vld                  ),
+        .addr_o    ( addr_o                     ),
+        .instr_o   ( instr_o                    )
+    );
 
-        fetch_entry_valid_o  = fetch_entry_valid_i;
-        fetch_ack_o        = fetch_ack_i;
-        // we just jumped to a half word and encountered an unaligned 32-bit instruction
-        jump_unaligned_half_word = 1'b0;
-        // ---------------------------------
-        // Input port & Instruction Aligner
-        // ---------------------------------
-        // check if the entry if the fetch FIFO is valid and if we are currently not serving the second part
-        // of a compressed instruction
-        if (fetch_entry_valid_i && !compressed_q) begin
-            // ------------------------
-            // Access on Word Boundary
-            // ------------------------
-            if (fetch_entry_i.address[1] == 1'b0) begin
-                // do we actually want the first instruction or was the address a half word access?
-                if (!unaligned_q) begin
-                    // we got a valid instruction so we can satisfy the unaligned instruction
-                    unaligned_n = 1'b0;
-                    // check if the instruction is compressed
-                    if (fetch_entry_i.instruction[1:0] != 2'b11) begin
-                        // it is compressed
-                        fetch_entry_o.instruction = {15'b0, fetch_entry_i.instruction[15:0]};
-                        // we need to kill the lower prediction
-                        if (fetch_entry_i.branch_predict.valid && !fetch_entry_i.bp_taken[0])
-                            fetch_entry_o.branch_predict.valid = 1'b0;
+    // if a branch was taken previously mask later instructions
+    assign instr_vld_bp_masked[0] = instr_vld[0];
+    assign instr_vld_bp_masked[1] = instr_vld[1] & ~fetch_entry_i.branch_taken[0];
 
-                        // should we even look at the upper instruction bits?
-                        if (!kill_upper_16_bit) begin
-                            // Yes, so...
-                            // 1. Is the second instruction also compressed, like:
-                            // _____________________________________________
-                            // | compressed 2 [31:16] | compressed 1[15:0] |
-                            // |____________________________________________
-                            if (fetch_entry_i.instruction[17:16] != 2'b11) begin
-                                // yes, this was a compressed instruction
-                                compressed_n = 1'b1;
-                                // do not advance the queue pointer
-                                fetch_ack_o = 1'b0;
-                            // 2. or is it an unaligned 32 bit instruction like
-                            // ____________________________________________________
-                            // |instr [15:0] | instr [31:16] | compressed 1[15:0] |
-                            // |____________________________________________________
-                            end else begin
-                                // save the lower 16 bit
-                                unaligned_instr_n = fetch_entry_i.instruction[31:16];
-                                // save the address
-                                unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
-                                // and that it was unaligned
-                                unaligned_n = 1'b1;
-                                // this does not consume space in the FIFO
-                            end
-                        end
-                    end
-                end
-                // this is a full 32 bit instruction like
-                // _______________________
-                // | instruction [31:0]  |
-                // |______________________
+    // we have one valid instruction
+    assign fetch_entry_valid_o = |instr_vld_bp_masked;
+    // slect the write output
+    assign fetch_entry_o.address = addr_o[idx_q];
+    assign fetch_entry_o.instruction = instr_o[idx_q];
 
-                // we have an outstanding unaligned instruction
-                else if (unaligned_q) begin
-
-
-                    fetch_entry_o.address = unaligned_address_q;
-                    fetch_entry_o.instruction = {fetch_entry_i.instruction[15:0], unaligned_instr_q};
-
-                    // again should we look at the upper bits?
-                    if (!kill_upper_16_bit) begin
-                        // whats up with the other upper 16 bit of this instruction
-                        // is the second instruction also compressed, like:
-                        // _____________________________________________
-                        // | compressed 2 [31:16] | unaligned[31:16]    |
-                        // |____________________________________________
-                        // check if the lower compressed instruction was no branch otherwise we will need to squash this instruction
-                        // but only if we predicted it to be taken, the predict was on the lower 16 bit compressed instruction
-                        if (fetch_entry_i.instruction[17:16] != 2'b11) begin
-                            // this was a compressed instruction
-                            compressed_n  = 1'b1;
-                            // do not advance the queue pointer
-                            fetch_ack_o = 1'b0;
-                            // unaligned access served
-                            unaligned_n = 1'b0;
-                            // we need to kill the lower prediction
-                            if (fetch_entry_i.branch_predict.valid && !fetch_entry_i.bp_taken[0])
-                                fetch_entry_o.branch_predict.valid = 1'b0;
-                            // or is it an unaligned 32 bit instruction like
-                        // ____________________________________________________
-                        // |instr [15:0] | instr [31:16] | compressed 1[15:0] |
-                        // |____________________________________________________
-                        end else if (!kill_upper_16_bit) begin
-                            // save the lower 16 bit
-                            unaligned_instr_n = fetch_entry_i.instruction[31:16];
-                            // save the address
-                            unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
-                            // and that it was unaligned
-                            unaligned_n = 1'b1;
-                        end
-                    end
-                    // we've got a predicted taken branch we need to clear the unaligned flag if it was decoded as a lower 16 instruction
-                    else if (fetch_entry_i.branch_predict.valid) begin
-                        // the next fetch will start from a 4 byte boundary again
-                        unaligned_n = 1'b0;
-                    end
-                end
-            end
-            // ----------------------------
-            // Access on half-Word Boundary
-            // ----------------------------
-            else if (fetch_entry_i.address[1] == 1'b1) begin // address was a half word access
-                // reset the unaligned flag as this is a completely new fetch (because consecutive fetches only happen on a word basis)
-                unaligned_n = 1'b0;
-                // this is a compressed instruction
-                if (fetch_entry_i.instruction[17:16] != 2'b11) begin
-                    // it is compressed
-                    fetch_entry_o.instruction = {15'b0, fetch_entry_i.instruction[31:16]};
-
-                // this is the first part of a 32 bit unaligned instruction
-                end else begin
-                     // save the lower 16 bit
-                    unaligned_instr_n = fetch_entry_i.instruction[31:16];
-                    // and that it was unaligned
-                    unaligned_n = 1'b1;
-                    // save the address
-                    unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
-                    // we need to wait for the second instruction
-                    fetch_entry_valid_o = 1'b0;
-                    // so get it by acknowledging this instruction
-                    fetch_ack_o = 1'b1;
-                    // we got to an unaligned instruction -> get the next entry to full-fill the need
-                    jump_unaligned_half_word = 1'b1;
-                end
-                // there can never be a whole 32 bit instruction on a half word access
-            end
+    always_comb begin
+        idx_d = idx_q;
+        // etiher the downstream unit is accepting the data or we have fetched an unaligned word were we need to get
+        // the next entry to have a valid output
+        fetch_ack_o = fetch_ack_i | (~fetch_entry_valid_o & fetch_entry_valid_i);
+        // we can advance the re-aligner if there is no remaining instruction
+        en = fetch_ack_o & (~instr_vld_bp_masked[1]);
+        // the upper 16 bit are also a valid instruction, we need to keep the data arround
+        if (instr_vld_bp_masked[1] && idx_q == 0) begin
+            fetch_ack_o = 1'b0;
+            // we can serve the upper part
+            if (fetch_ack_i) idx_d = 1;
         end
-        // ----------------------------
-        // Next compressed instruction
-        // ----------------------------
-        // we are serving the second part of an instruction which was also compressed
-        if (compressed_q) begin
+
+        // we are serving the upper part of an instruction
+        if (idx_q == 1) begin
+            // as soon as the instructon fetch was acknowledged we can advance the pointer
+            en = fetch_ack_i;
             fetch_ack_o = fetch_ack_i;
-            compressed_n  = 1'b0;
-            fetch_entry_o.instruction = {16'b0, fetch_entry_i.instruction[31:16]};
-            fetch_entry_o.address = {fetch_entry_i.address[63:2], 2'b10};
-            fetch_entry_valid_o = 1'b1;
+            // go back to serving the lower part
+            if (fetch_ack_i) idx_d = 0;
         end
-
-        // if we didn't get an acknowledge keep the registers stable
-        if (!fetch_ack_i && !jump_unaligned_half_word) begin
-            unaligned_n         = unaligned_q;
-            unaligned_instr_n   = unaligned_instr_q;
-            compressed_n        = compressed_q;
-            unaligned_address_n = unaligned_address_q;
+        // directly output this instruction. adoptions are made throughout the always comb block
+        fetch_entry_o.branch_predict = fetch_entry_i.branch_predict;
+        // squas branch prediction if we actually predicted on the upper address
+        if (fetch_entry_i.branch_taken[1] && idx_q == 0) begin
+            fetch_entry_o.branch_predict.valid = 1'b0;
         end
-
-        if (flush_i) begin
-            // clear the unaligned and compressed instruction
-            unaligned_n  = 1'b0;
-            compressed_n = 1'b0;
-        end
-
-        // assign the correct address for a potentially faulting unaligned instruction
-        // we've already done the re-alignment for the instruction word so we
-        // can just assign it here to tval
-        fetch_entry_o.ex.tval = fetch_entry_o.address;
     end
 
-    // ---------
-    // Registers
-    // ---------
-    always_ff @(posedge clk_i or negedge rst_ni) begin
+    // assign the correct address for a potentially faulting unaligned instruction
+    // we've already done the re-alignment for the instruction word so we
+    // can just assign it here to tval
+    assign fetch_entry_o.ex.valid       = fetch_entry_i.page_fault;
+    assign fetch_entry_o.ex.cause       = (fetch_entry_i.page_fault) ? riscv::INSTR_PAGE_FAULT : '0;
+    assign fetch_entry_o.ex.tval        = fetch_entry_o.address;
+
+    always_ff @(posedge clk_i) begin
         if (~rst_ni) begin
-            unaligned_q         <= 1'b0;
-            unaligned_instr_q   <= 16'b0;
-            unaligned_address_q <= 64'b0;
-            compressed_q        <= 1'b0;
+            idx_q <= 0;
         end else begin
-            unaligned_q         <= unaligned_n;
-            unaligned_instr_q   <= unaligned_instr_n;
-            unaligned_address_q <= unaligned_address_n;
-            compressed_q        <= compressed_n;
+            idx_q <= idx_d;
+            if (flush_i) begin
+                idx_q <= 0;
+            end
         end
     end
+
+    // // ----------
+    // // Registers
+    // // ----------
+    // // the last instruction was unaligned
+    // logic        unaligned_n,         unaligned_q;
+    // // save the unaligned part of the instruction to this ff
+    // logic [15:0] unaligned_instr_n,   unaligned_instr_q;
+    // // the previous instruction was compressed
+    // logic        compressed_n,        compressed_q;
+    // // register to save the unaligned address
+    // logic [63:0] unaligned_address_n, unaligned_address_q;
+    // // get the next instruction, needed on a unaligned access
+    // logic jump_unaligned_half_word;
+
+    // // check if the lower compressed instruction was no branch otherwise we will need to squash this instruction
+    // // but only if we predicted it to be taken, the predict was on the lower 16 bit compressed instruction
+    // logic kill_upper_16_bit;
+    // assign kill_upper_16_bit = fetch_entry_i.branch_predict.valid &
+    //                            fetch_entry_i.branch_predict.predict_taken &
+    //                            fetch_entry_i.bp_taken[0];
+    // // ----------
+    // // Registers
+    // // ----------
+    // always_comb begin : realign_instr
+
+    //     unaligned_n          = unaligned_q;
+    //     unaligned_instr_n    = unaligned_instr_q;
+    //     compressed_n         = compressed_q;
+    //     unaligned_address_n  = unaligned_address_q;
+
+    //     // directly output this instruction. adoptions are made throughout the always comb block
+    //     fetch_entry_o.address        = fetch_entry_i.address;
+    //     fetch_entry_o.instruction    = fetch_entry_i.instruction;
+    //     fetch_entry_o.branch_predict = fetch_entry_i.branch_predict;
+    //     fetch_entry_o.ex.valid       = fetch_entry_i.page_fault;
+    //     fetch_entry_o.ex.tval        = (fetch_entry_i.page_fault) ? fetch_entry_i.address : '0;
+    //     fetch_entry_o.ex.cause       = (fetch_entry_i.page_fault) ? riscv::INSTR_PAGE_FAULT : '0;
+
+    //     fetch_entry_valid_o  = fetch_entry_valid_i;
+    //     fetch_ack_o        = fetch_ack_i;
+    //     // we just jumped to a half word and encountered an unaligned 32-bit instruction
+    //     jump_unaligned_half_word = 1'b0;
+    //     // ---------------------------------
+    //     // Input port & Instruction Aligner
+    //     // ---------------------------------
+    //     // check if the entry if the fetch FIFO is valid and if we are currently not serving the second part
+    //     // of a compressed instruction
+    //     if (fetch_entry_valid_i && !compressed_q) begin
+    //         // ------------------------
+    //         // Access on Word Boundary
+    //         // ------------------------
+    //         if (fetch_entry_i.address[1] == 1'b0) begin
+    //             // do we actually want the first instruction or was the address a half word access?
+    //             if (!unaligned_q) begin
+    //                 // we got a valid instruction so we can satisfy the unaligned instruction
+    //                 unaligned_n = 1'b0;
+    //                 // check if the instruction is compressed
+    //                 if (fetch_entry_i.instruction[1:0] != 2'b11) begin
+    //                     // it is compressed
+    //                     fetch_entry_o.instruction = {16'b0, fetch_entry_i.instruction[15:0]};
+    //                     // we need to kill the lower prediction
+    //                     if (fetch_entry_i.branch_predict.valid && !fetch_entry_i.bp_taken[0])
+    //                         fetch_entry_o.branch_predict.valid = 1'b0;
+
+    //                     // should we even look at the upper instruction bits?
+    //                     if (!kill_upper_16_bit) begin
+    //                         // Yes, so...
+    //                         // 1. Is the second instruction also compressed, like:
+    //                         // _____________________________________________
+    //                         // | compressed 2 [31:16] | compressed 1[15:0] |
+    //                         // |____________________________________________
+    //                         if (fetch_entry_i.instruction[17:16] != 2'b11) begin
+    //                             // yes, this was a compressed instruction
+    //                             compressed_n = 1'b1;
+    //                             // do not advance the queue pointer
+    //                             fetch_ack_o = 1'b0;
+    //                         // 2. or is it an unaligned 32 bit instruction like
+    //                         // ____________________________________________________
+    //                         // |instr [15:0] | instr [31:16] | compressed 1[15:0] |
+    //                         // |____________________________________________________
+    //                         end else begin
+    //                             // save the lower 16 bit
+    //                             unaligned_instr_n = fetch_entry_i.instruction[31:16];
+    //                             // save the address
+    //                             unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
+    //                             // and that it was unaligned
+    //                             unaligned_n = 1'b1;
+    //                             // this does not consume space in the FIFO
+    //                         end
+    //                     end
+    //                 end
+    //             end
+    //             // this is a full 32 bit instruction like
+    //             // _______________________
+    //             // | instruction [31:0]  |
+    //             // |______________________
+
+    //             // we have an outstanding unaligned instruction
+    //             else if (unaligned_q) begin
+
+
+    //                 fetch_entry_o.address = unaligned_address_q;
+    //                 fetch_entry_o.instruction = {fetch_entry_i.instruction[15:0], unaligned_instr_q};
+
+    //                 // again should we look at the upper bits?
+    //                 if (!kill_upper_16_bit) begin
+    //                     // whats up with the other upper 16 bit of this instruction
+    //                     // is the second instruction also compressed, like:
+    //                     // _____________________________________________
+    //                     // | compressed 2 [31:16] | unaligned[31:16]    |
+    //                     // |____________________________________________
+    //                     // check if the lower compressed instruction was no branch otherwise we will need to squash this instruction
+    //                     // but only if we predicted it to be taken, the predict was on the lower 16 bit compressed instruction
+    //                     if (fetch_entry_i.instruction[17:16] != 2'b11) begin
+    //                         // this was a compressed instruction
+    //                         compressed_n  = 1'b1;
+    //                         // do not advance the queue pointer
+    //                         fetch_ack_o = 1'b0;
+    //                         // unaligned access served
+    //                         unaligned_n = 1'b0;
+    //                         // we need to kill the lower prediction
+    //                         if (fetch_entry_i.branch_predict.valid && !fetch_entry_i.bp_taken[0])
+    //                             fetch_entry_o.branch_predict.valid = 1'b0;
+    //                         // or is it an unaligned 32 bit instruction like
+    //                     // ____________________________________________________
+    //                     // |instr [15:0] | instr [31:16] | compressed 1[15:0] |
+    //                     // |____________________________________________________
+    //                     end else if (!kill_upper_16_bit) begin
+    //                         // save the lower 16 bit
+    //                         unaligned_instr_n = fetch_entry_i.instruction[31:16];
+    //                         // save the address
+    //                         unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
+    //                         // and that it was unaligned
+    //                         unaligned_n = 1'b1;
+    //                     end
+    //                 end
+    //                 // we've got a predicted taken branch we need to clear the unaligned flag if it was decoded as a lower 16 instruction
+    //                 else if (fetch_entry_i.branch_predict.valid) begin
+    //                     // the next fetch will start from a 4 byte boundary again
+    //                     unaligned_n = 1'b0;
+    //                 end
+    //             end
+    //         end
+    //         // ----------------------------
+    //         // Access on half-Word Boundary
+    //         // ----------------------------
+    //         else if (fetch_entry_i.address[1] == 1'b1) begin // address was a half word access
+    //             // reset the unaligned flag as this is a completely new fetch (because consecutive fetches only happen on a word basis)
+    //             unaligned_n = 1'b0;
+    //             // this is a compressed instruction
+    //             if (fetch_entry_i.instruction[17:16] != 2'b11) begin
+    //                 // it is compressed
+    //                 fetch_entry_o.instruction = {15'b0, fetch_entry_i.instruction[31:16]};
+
+    //             // this is the first part of a 32 bit unaligned instruction
+    //             end else begin
+    //                  // save the lower 16 bit
+    //                 unaligned_instr_n = fetch_entry_i.instruction[31:16];
+    //                 // and that it was unaligned
+    //                 unaligned_n = 1'b1;
+    //                 // save the address
+    //                 unaligned_address_n = {fetch_entry_i.address[63:2], 2'b10};
+    //                 // we need to wait for the second instruction
+    //                 fetch_entry_valid_o = 1'b0;
+    //                 // so get it by acknowledging this instruction
+    //                 fetch_ack_o = 1'b1;
+    //                 // we got to an unaligned instruction -> get the next entry to full-fill the need
+    //                 jump_unaligned_half_word = 1'b1;
+    //             end
+    //             // there can never be a whole 32 bit instruction on a half word access
+    //         end
+    //     end
+    //     // ----------------------------
+    //     // Next compressed instruction
+    //     // ----------------------------
+    //     // we are serving the second part of an instruction which was also compressed
+    //     if (compressed_q) begin
+    //         fetch_ack_o = fetch_ack_i;
+    //         compressed_n  = 1'b0;
+    //         fetch_entry_o.instruction = {16'b0, fetch_entry_i.instruction[31:16]};
+    //         fetch_entry_o.address = {fetch_entry_i.address[63:2], 2'b10};
+    //         fetch_entry_valid_o = 1'b1;
+    //     end
+
+    //     // if we didn't get an acknowledge keep the registers stable
+    //     if (!fetch_ack_i && !jump_unaligned_half_word) begin
+    //         unaligned_n         = unaligned_q;
+    //         unaligned_instr_n   = unaligned_instr_q;
+    //         compressed_n        = compressed_q;
+    //         unaligned_address_n = unaligned_address_q;
+    //     end
+
+    //     if (flush_i) begin
+    //         // clear the unaligned and compressed instruction
+    //         unaligned_n  = 1'b0;
+    //         compressed_n = 1'b0;
+    //     end
+
+    //     // assign the correct address for a potentially faulting unaligned instruction
+    //     // we've already done the re-alignment for the instruction word so we
+    //     // can just assign it here to tval
+    //     fetch_entry_o.ex.tval = fetch_entry_o.address;
+    // end
+
+    // // ---------
+    // // Registers
+    // // ---------
+    // always_ff @(posedge clk_i or negedge rst_ni) begin
+    //     if (~rst_ni) begin
+    //         unaligned_q         <= 1'b0;
+    //         unaligned_instr_q   <= 16'b0;
+    //         unaligned_address_q <= 64'b0;
+    //         compressed_q        <= 1'b0;
+    //     end else begin
+    //         unaligned_q         <= unaligned_n;
+    //         unaligned_instr_q   <= unaligned_instr_n;
+    //         unaligned_address_q <= unaligned_address_n;
+    //         compressed_q        <= compressed_n;
+    //     end
+    // end
 
 endmodule

@@ -368,11 +368,12 @@ package ariane_pkg;
     // ---------------
     // IF/ID Stage
     // ---------------
+    // instruction package from instruction frontend, unaligned
    typedef struct packed {
         logic [63:0]                address;        // the address of the instructions from below
         logic [FETCH_WIDTH-1:0]     instruction;    // instruction word
         branchpredict_sbe_t         branch_predict; // this field contains branch prediction information regarding the forward branch path
-        logic [INSTR_PER_FETCH-1:0] bp_taken;       // at which instruction is this branch taken?
+        logic [INSTR_PER_FETCH-1:0] branch_taken;   // at which instruction is this branch taken?
         logic                       page_fault;     // an instruction page fault happened
     } frontend_fetch_t;
 

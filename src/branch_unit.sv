@@ -56,16 +56,7 @@ module branch_unit (
         // if we need to put the branch target address in a destination register, output it here to WB
         branch_result_o = next_pc;
 
-        // save PC - we need this to get the target row in the branch target buffer
-        // we play this trick with the branch instruction which wraps a word boundary:
-        //  /---------- Place the prediction on this PC
-        // \/
-        // ____________________________________________________
-        // |branch [15:0] | branch[31:16] | compressed 1[15:0] |
-        // |____________________________________________________
-        // This will relief the pre-fetcher to re-fetch partially fetched unaligned branch instructions e.g.:
-        // we don't have a back arch between the pre-fetcher and decoder/instruction FIFO.
-        resolved_branch_o.pc = (is_compressed_instr_i || pc_i[1] == 1'b0) ? pc_i : ({pc_i[63:2], 2'b0} + 64'h4);
+        resolved_branch_o.pc = pc_i;
 
         if (branch_valid_i) begin
             // write target address which goes to pc gen

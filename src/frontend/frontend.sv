@@ -108,6 +108,9 @@ module frontend (
         .instr_o   ( instr                    )
     );
 
+    logic bht_address;
+    logic btb_address;
+
     // control front-end + branch-prediction
     always_comb begin : frontend_ctrl
         automatic logic take_rvi_cf; // take the control flow change (non-compressed)
@@ -126,6 +129,9 @@ module frontend (
 
         bp_sbe.cf_type    = RAS;
 
+        bht_address       = '0;
+        btb_address       = '0;
+
         // only predict if the response is valid
         if (|instruction_valid) begin
             // look at instruction 0, 1, 2, ...
@@ -139,6 +145,7 @@ module frontend (
                     // Branch Prediction - **speculative**
                     if (rvi_branch[i] || rvc_branch[i]) begin
                         bp_sbe.cf_type = BHT;
+                        btb_address = addr[i];
                         // dynamic prediction valid?
                         if (bht_prediction.valid) begin
                             take_rvi_cf = rvi_branch[i] & (bht_prediction.taken | bht_prediction.strongly_taken);
@@ -160,6 +167,7 @@ module frontend (
                     // to take this jump we need a valid prediction target **speculative**
                     if ((rvi_jalr[i] || rvc_jalr[i]) && ~(rvi_call[i] || rvc_call[i])) begin
                         bp_sbe.cf_type = BTB;
+                        bht_address = addr[i];
                         if (btb_prediction.valid) begin
                             bp_vaddr = btb_prediction.target_address;
                             taken[i+1] = 1'b1;
@@ -391,7 +399,7 @@ module frontend (
         .rst_ni,
         .flush_i          ( flush_bp_i       ),
         .debug_mode_i,
-        .vpc_i            ( icache_vaddr_q   ),
+        .vpc_i            ( btb_address      ),
         .btb_update_i     ( btb_update       ),
         .btb_prediction_o ( btb_prediction   )
     );
@@ -403,7 +411,7 @@ module frontend (
         .rst_ni,
         .flush_i          ( flush_bp_i       ),
         .debug_mode_i,
-        .vpc_i            ( icache_vaddr_q   ),
+        .vpc_i            ( bht_address      ),
         .bht_update_i     ( bht_update       ),
         .bht_prediction_o ( bht_prediction   )
     );

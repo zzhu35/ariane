@@ -95,21 +95,22 @@ module frontend (
 
     // Re-align instructions
     instr_realign i_instr_realign (
-        .clk_i     ( clk_i                    ),
-        .rst_ni    ( rst_ni                   ),
-        .flush_i   ( icache_dreq_o.kill_s2    ),
-        .valid_i   ( icache_valid_q           ),
-        .en_i      ( 1'b1                     ),
-        .address_i ( icache_vaddr_q           ),
-        .taken_i   ( taken[INSTR_PER_FETCH:1] ),
-        .data_i    ( icache_data_q            ),
-        .valid_o   ( instruction_valid        ),
-        .addr_o    ( addr                     ),
-        .instr_o   ( instr                    )
+        .clk_i       ( clk_i                    ),
+        .rst_ni      ( rst_ni                   ),
+        .flush_i     ( icache_dreq_o.kill_s2    ),
+        .valid_i     ( icache_valid_q           ),
+        .en_i        ( 1'b1                     ),
+        .address_i   ( icache_vaddr_q           ),
+        .taken_i     ( taken[INSTR_PER_FETCH:1] ),
+        .data_i      ( icache_data_q            ),
+        .valid_o     ( instruction_valid        ),
+        .addr_o      ( addr                     ),
+        .instr_o     ( instr                    ),
+        .unaligned_o (                          ) // keep open
     );
 
-    logic bht_address;
-    logic btb_address;
+    logic [63:0] bht_address;
+    logic [63:0] btb_address;
 
     // control front-end + branch-prediction
     always_comb begin : frontend_ctrl
@@ -148,8 +149,8 @@ module frontend (
                         btb_address = addr[i];
                         // dynamic prediction valid?
                         if (bht_prediction.valid) begin
-                            take_rvi_cf = rvi_branch[i] & (bht_prediction.taken | bht_prediction.strongly_taken);
-                            take_rvc_cf = rvc_branch[i] & (bht_prediction.taken | bht_prediction.strongly_taken);
+                            take_rvi_cf = rvi_branch[i] & bht_prediction.taken;
+                            take_rvc_cf = rvc_branch[i] & bht_prediction.taken;
                         // default to static prediction
                         end else begin
                             // set if immediate is negative - static prediction
@@ -234,13 +235,11 @@ module frontend (
     // BHT
     assign bht_update.valid = resolved_branch_i.valid & (resolved_branch_i.cf_type == BHT);
     assign bht_update.pc    = resolved_branch_i.pc;
-    assign bht_update.mispredict = resolved_branch_i.is_mispredict;
     assign bht_update.taken = resolved_branch_i.is_taken;
     // BTB
     assign btb_update.valid = resolved_branch_i.valid & (resolved_branch_i.cf_type == BTB);
     assign btb_update.pc    = resolved_branch_i.pc;
     assign btb_update.target_address = resolved_branch_i.target_address;
-    assign btb_update.clear = resolved_branch_i.clear;
 
     // -------------------
     // Next PC

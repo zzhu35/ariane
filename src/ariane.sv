@@ -74,6 +74,8 @@ module ariane #(
     // --------------
     fu_data_t                 fu_data_id_ex;
     logic [63:0]              pc_id_ex;
+    logic [4:0]               rd_id_ex;
+    logic [4:0]               rs1_id_ex;
     logic                     is_compressed_instr_id_ex;
     // fixed latency units
     logic                     flu_ready_ex_id;
@@ -284,6 +286,8 @@ module ariane #(
         // Functional Units
         .fu_data_o                  ( fu_data_id_ex                   ),
         .pc_o                       ( pc_id_ex                        ),
+        .rd_o                       ( rd_id_ex                        ),
+        .rs1_o                      ( rs1_id_ex                       ),
         .is_compressed_instr_o      ( is_compressed_instr_id_ex       ),
         // fixed latency unit ready
         .flu_ready_i                ( flu_ready_ex_id                 ),
@@ -327,9 +331,9 @@ module ariane #(
     ex_stage ex_stage_i (
         .clk_i                  ( clk_i                       ),
         .rst_ni                 ( rst_ni                      ),
+        .debug_mode_i           ( debug_mode                  ),
         .flush_i                ( flush_ctrl_ex               ),
         .fu_data_i              ( fu_data_id_ex               ),
-        .pc_i                   ( pc_id_ex                    ),
         .is_compressed_instr_i  ( is_compressed_instr_id_ex   ),
         // fixed latency units
         .flu_result_o           ( flu_result_ex_id            ),
@@ -340,6 +344,9 @@ module ariane #(
         // ALU
         .alu_valid_i            ( alu_valid_id_ex             ),
         // Branches and Jumps
+        .pc_i                   ( pc_id_ex                    ),
+        .rd_i                   ( rd_id_ex                    ), // diagnostics only
+        .rs1_i                  ( rs1_id_ex                   ), // diagnostics only
         .branch_valid_i         ( branch_valid_id_ex          ),
         .branch_predict_i       ( branch_predict_id_ex        ), // branch predict to ex
         .resolved_branch_o      ( resolved_branch             ),

@@ -18,10 +18,10 @@ module instr_realign (
     input  logic [FETCH_WIDTH-1:0]            data_i,
     output logic [INSTR_PER_FETCH-1:0]        valid_o,
     output logic [INSTR_PER_FETCH-1:0][63:0]  addr_o,
-    output logic [INSTR_PER_FETCH-1:0][31:0]  instr_o
-
+    output logic [INSTR_PER_FETCH-1:0][31:0]  instr_o,
+    output logic                              unaligned_o // instruction 0 is the upper part of an unaligned instruction
 );
-    // as a maximum we support a fetch widht of 64-bit, hence there can be 4 compressed instructions
+    // as a maximum we support a fetch width of 64-bit, hence there can be 4 compressed instructions
     logic [3:0] instr_is_compressed;
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i ++) begin
@@ -35,6 +35,8 @@ module instr_realign (
     logic        unaligned_d,         unaligned_q;
     // register to save the unaligned address
     logic [63:0] unaligned_address_d, unaligned_address_q;
+
+    assign unaligned_o = unaligned_q;
 
     // Instruction re-alignment
     if (FETCH_WIDTH == 32) begin : realign_bp_32

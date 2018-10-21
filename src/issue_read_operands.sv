@@ -42,6 +42,8 @@ module issue_read_operands #(
     // To FU, just single issue for now
     output fu_data_t                               fu_data_o,
     output logic [63:0]                            pc_o,
+    output logic [4:0]                             rd_o,
+    output logic [4:0]                             rs1_d_o,
     output logic                                   is_compressed_instr_o,
     // ALU 1
     input  logic                                   flu_ready_i,      // Fixed latency unit ready to accept a new request
@@ -413,6 +415,8 @@ module issue_read_operands #(
             operator_q            <= ADD;
             trans_id_q            <= 5'b0;
             pc_o                  <= 64'b0;
+            rd_o                  <= 5'b0;
+            rs1_d_o               <= 5'b0;
             is_compressed_instr_o <= 1'b0;
             branch_predict_o      <= '{default: 0};
         end else begin
@@ -431,6 +435,8 @@ module issue_read_operands #(
             operator_q            <= operator_n;
             trans_id_q            <= trans_id_n;
             pc_o                  <= issue_instr_i.pc;
+            rd_o                  <= issue_instr_i.rd[4:0];
+            rs1_d_o               <= issue_instr_i.rs1[4:0];
             is_compressed_instr_o <= issue_instr_i.is_compressed;
             branch_predict_o      <= issue_instr_i.bp;
         end

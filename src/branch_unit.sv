@@ -15,8 +15,14 @@
 import ariane_pkg::*;
 
 module branch_unit (
+    input  logic                      clk_i,
+    input  logic                      rst_ni,
+    input  logic                      debug_mode_i,
+
     input  fu_data_t                  fu_data_i,
     input  logic [63:0]               pc_i,                   // PC of instruction
+    input  logic [4:0]                rs1_i,                  // source operand 1 (only for diagnostics)
+    input  logic [4:0]                rd_i,                   // destination register (only for diagnostics)
     input  logic                      is_compressed_instr_i,
     input  logic                      fu_valid_i,             // any functional unit is valid, check that there is no accidental mis-predict
     input  logic                      branch_valid_i,
@@ -44,16 +50,15 @@ module branch_unit (
         resolved_branch_o.is_taken       = 1'b0;
         resolved_branch_o.valid          = branch_valid_i;
         resolved_branch_o.is_mispredict  = 1'b0;
-        resolved_branch_o.clear          = 1'b0;
         resolved_branch_o.cf_type        = branch_predict_i.cf_type;
         // calculate next PC, depending on whether the instruction is compressed or not this may be different
         next_pc                          = pc_i + ((is_compressed_instr_i) ? 64'h2 : 64'h4);
         // calculate target address simple 64 bit addition
         target_address                   = $unsigned($signed(jump_base) + $signed(fu_data_i.imm));
         // on a JALR we are supposed to reset the LSB to 0 (according to the specification)
-        if (fu_data_i.operator == JALR)
-            target_address[0] = 1'b0;
-        // if we need to put the branch target address in a destination register, output it here to WB
+        if (fu_data_i.operator == JALR) target_address[0] = 1'b0;
+
+        // we need to put the branch target address into rd, this is the result of this unit
         branch_result_o = next_pc;
 
         resolved_branch_o.pc = pc_i;
@@ -85,18 +90,15 @@ module branch_unit (
             end
             // to resolve the branch in ID
             resolve_branch_o = 1'b1;
-        // the other case would be that this instruction was no branch but branch prediction thought that it was one
-        // this is essentially also a mis-predict
-        end else if (fu_valid_i && branch_predict_i.valid && branch_predict_i.predict_taken) begin
-            // re-set the branch to the next PC
-            resolved_branch_o.is_mispredict  = 1'b1;
-            resolved_branch_o.target_address = next_pc;
-            // clear this entry so that we are not constantly mis-predicting
-            resolved_branch_o.clear          = 1'b1;
-            resolved_branch_o.valid          = 1'b1;
-            resolve_branch_o                 = 1'b1;
+        end
+
+        // we placed the prediction on a non branch instruction
+        if (!branch_valid_i && fu_valid_i && branch_predict_i.valid) begin
+            // we should not end here if the front-end is bug free
+            $fatal(1, "Mis-predicted on non branch instruction");
         end
     end
+
     // use ALU exception signal for storing instruction fetch exceptions if
     // the target address is not aligned to a 2 byte boundary
     always_comb begin : exception_handling
@@ -107,4 +109,72 @@ module branch_unit (
         if (branch_valid_i && target_address[0] != 1'b0)
             branch_exception_o.valid = 1'b1;
     end
+
+    // Keep a golden model of the predictors
+    // pragma translate_off
+    `ifndef VERILATOR
+        // branch history table (BHT)
+        struct packed {
+            logic       valid;
+            logic [1:0] saturation_counter;
+        } bht[BTB_ENTRIES-1:0];
+
+        always_ff @(posedge clk_i or negedge rst_ni) begin
+            if (~rst_ni) begin
+                for (int unsigned i = 0; i < BTB_ENTRIES; i++)
+                    bht[i] <= '0;
+            end else if (!debug_mode_i) begin
+                // save new branch decision
+                if (resolved_branch_o.valid) begin
+                    bht[resolved_branch_o.pc].valid <= 1'b1;
+
+                    case (bht[resolved_branch_o.pc].saturation_counter)
+                        2'b00: begin
+                            if (resolved_branch_o.is_taken) bht[resolved_branch_o.pc].saturation_counter <= 2'b01;
+                        end
+                        2'b01: begin
+                            if (resolved_branch_o.is_taken) bht[resolved_branch_o.pc].saturation_counter <= 2'b10;
+                            else bht[resolved_branch_o.pc].saturation_counter <= 2'b00;
+                        end
+                        2'b10:
+                            if (resolved_branch_o.is_taken) bht[resolved_branch_o.pc].saturation_counter <= 2'b11;
+                            else bht[resolved_branch_o.pc].saturation_counter <= 2'b01;
+                        2'b11:
+                            if (!resolved_branch_o.is_taken) bht[resolved_branch_o.pc].saturation_counter <= 2'b10;
+                    endcase
+                end
+            end
+        end
+
+        bht_check_valid : assert property(
+            @(posedge clk_i) disable iff (~rst_ni) (bht[pc_i].valid |-> branch_predict_i.valid))
+            else $warning("[BHT] We've already seen this branch but did not predict");
+
+        // return address stack
+        ras_t [RAS_DEPTH-1:0] ras;
+
+        always_ff @(posedge clk_i or negedge rst_ni) begin
+            if (~rst_ni) begin
+                ras <= '0;
+            end else if (!debug_mode_i) begin
+                if (branch_valid_i) begin
+                    // its either JALR or JAL
+                    if (fu_data_i.operator == JALR ||  fu_data_i.operator == ADD) begin
+                        // destination is x1 or x5 -> this is a call
+                        if (rd_i == 5'd1 || rd_i == 5'd5) begin
+                            // pop from call stack
+                            // assert(branch_predict_i.valid && branch_predict_i.cf_type == RAS) else $warning("Call wasn't detected correctly!");
+                        // this is a return
+                        end else if (rs1_i == 5'd1 || rs1_i == 5'd5) begin
+                            // pop from call stack
+                            // assert(branch_predict_i.valid && branch_predict_i.cf_type == RAS) else $warning("Return wasn't detected correctly!");
+                        end
+                    end
+
+                end
+            end
+        end
+
+    `endif
+    // pragma translate_on
 endmodule

@@ -34,6 +34,8 @@ module issue_stage #(
     // to EX
     output fu_data_t                                 fu_data_o,
     output logic [63:0]                              pc_o,
+    output logic [4:0]                               rd_o,
+    output logic [4:0]                               rs1_o,
     output logic                                     is_compressed_instr_o,
     input  logic                                     flu_ready_i,
     output logic                                     alu_valid_o,
@@ -152,12 +154,14 @@ module issue_stage #(
     // 3. Issue instruction and read operand, also commit
     // ---------------------------------------------------------
     issue_read_operands i_issue_read_operands  (
+        .clk_i,
+        .rst_ni,
         .flush_i             ( flush_unissued_instr_i          ),
         .issue_instr_i       ( issue_instr_sb_iro              ),
         .issue_instr_valid_i ( issue_instr_valid_sb_iro        ),
         .issue_ack_o         ( issue_ack_iro_sb                ),
-        .fu_data_o           ( fu_data_o                       ),
-        .flu_ready_i         ( flu_ready_i                     ),
+        .fu_data_o,
+        .flu_ready_i,
         .rs1_o               ( rs1_iro_sb                      ),
         .rs1_i               ( rs1_sb_iro                      ),
         .rs1_valid_i         ( rs1_valid_sb_iro                ),
@@ -169,10 +173,22 @@ module issue_stage #(
         .rs3_valid_i         ( rs3_valid_iro_sb                ),
         .rd_clobber_gpr_i    ( rd_clobber_gpr_sb_iro           ),
         .rd_clobber_fpr_i    ( rd_clobber_fpr_sb_iro           ),
-        .alu_valid_o         ( alu_valid_o                     ),
-        .branch_valid_o      ( branch_valid_o                  ),
-        .csr_valid_o         ( csr_valid_o                     ),
-        .mult_valid_o        ( mult_valid_o                    ),
+        .alu_valid_o,
+        .branch_valid_o,
+        .csr_valid_o,
+        .mult_valid_o,
+        .pc_o,
+        .rd_o,
+        .rs1_d_o (rs1_o),
+        .is_compressed_instr_o,
+        .fpu_ready_i,
+        .fpu_valid_o,
+        .fpu_fmt_o,
+        .fpu_rm_o,
+        .waddr_i,
+        .wdata_i,
+        .we_gpr_i,
+        .we_fpr_i,
         .*
     );
 

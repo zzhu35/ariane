@@ -19,9 +19,9 @@ module ex_stage (
     input  logic                                   clk_i,    // Clock
     input  logic                                   rst_ni,   // Asynchronous reset active low
     input  logic                                   flush_i,
+    input  logic                                   debug_mode_i,
 
     input  fu_data_t                               fu_data_i,
-    input  logic [63:0]                            pc_i,                  // PC of current instruction
     input  logic                                   is_compressed_instr_i, // we need to know if this was a compressed instruction
                                                                           // in order to calculate the next PC on a mis-predict
     // Fixed latency unit(s)
@@ -34,6 +34,9 @@ module ex_stage (
     // ALU 1
     input  logic                                   alu_valid_i,           // Output is valid
     // Branch Unit
+    input  logic [63:0]                            pc_i,                  // PC of current instruction
+    input  logic [4:0]                             rd_i,                  // destination register (only for diagnostics)
+    input  logic [4:0]                             rs1_i,                 // source operand 1 (only for diagnostics)
     input  logic                                   branch_valid_i,        // we are using the branch unit
     input  branchpredict_sbe_t                     branch_predict_i,
     output branchpredict_t                         resolved_branch_o,     // the branch engine uses the write back from the ALU
@@ -141,8 +144,13 @@ module ex_stage (
     // we don't silence the branch unit as this is already critical and we do
     // not want to add another layer of logic
     branch_unit branch_unit_i (
+        .clk_i,
+        .rst_ni,
+        .debug_mode_i,
         .fu_data_i,
         .pc_i,
+        .rd_i,
+        .rs1_i,
         .is_compressed_instr_i,
         // any functional unit is valid, check that there is no accidental mis-predict
         .fu_valid_i ( alu_valid_i || lsu_valid_i || csr_valid_i || mult_valid_i || fpu_valid_i ) ,

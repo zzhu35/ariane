@@ -42,8 +42,8 @@ module bht #(
     assign update_pc = bht_update_i.pc[PREDICTION_BITS - 1:OFFSET];
     // prediction assignment
     assign bht_prediction_o.valid = bht_q[index].valid;
-    assign bht_prediction_o.taken = bht_q[index].saturation_counter == 2'b10;
-    assign bht_prediction_o.strongly_taken = (bht_q[index].saturation_counter == 2'b11);
+    assign bht_prediction_o.taken = bht_q[index].saturation_counter[1] == 1'b1;
+
     always_comb begin : update_bht
         bht_d = bht_q;
         saturation_counter = bht_q[update_pc].saturation_counter;

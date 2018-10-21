@@ -131,7 +131,17 @@ ifdef batch-mode
 else
 	questa-cmd   := -do " log -r /*; run -all;"
 endif
-
+# we want to preload the memories
+ifdef preload
+    questa-cmd += +PRELOAD=$(preload)
+    elf-bin = none
+endif
+# remote bitbang is enabled
+ifdef rbb
+    questa-cmd += +jtag_rbb_enable=1
+else
+    questa-cmd += +jtag_rbb_enable=0
+endif
 # Iterate over all include directories and write them with +incdir+ prefixed
 # +incdir+ works for Verilator and QuestaSim
 list_incdir := $(foreach dir, ${incdir}, +incdir+$(dir))
@@ -179,23 +189,23 @@ $(dpi-library)/ariane_dpi.so: $(dpi)
 # if you want to run in batch mode, use make <testname> batch-mode=1
 # alternatively you can call make sim elf-bin=<path/to/elf-bin> in order to load an arbitrary binary
 sim: build
-	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +max-cycles=$(max_cycles) +UVM_TESTNAME=$(test_case) \
-	+BASEDIR=$(riscv-test-dir) $(uvm-flags) +jtag_rbb_enable=0  -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
+	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +MAX_CYCLES=$(max_cycles) +UVM_TESTNAME=$(test_case) \
+	+BASEDIR=$(riscv-test-dir) $(uvm-flags) -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
 	${top_level}_optimized +permissive-off ++$(elf-bin) ++$(target-options) | tee sim.log
 
 $(riscv-asm-tests): build
-	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +max-cycles=$(max_cycles) +UVM_TESTNAME=$(test_case) \
-	+BASEDIR=$(riscv-test-dir) $(uvm-flags) +jtag_rbb_enable=0  -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
+	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +MAX_CYCLES=$(max_cycles) +UVM_TESTNAME=$(test_case) \
+	+BASEDIR=$(riscv-test-dir) $(uvm-flags) -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
 	${top_level}_optimized +permissive-off ++$(riscv-test-dir)/$@ ++$(target-options) | tee tmp/riscv-asm-tests-$@.log
 
 $(riscv-amo-tests): build
-	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +max-cycles=$(max_cycles) +UVM_TESTNAME=$(test_case) \
-	+BASEDIR=$(riscv-test-dir) $(uvm-flags) +jtag_rbb_enable=0  -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
+	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +MAX_CYCLES=$(max_cycles) +UVM_TESTNAME=$(test_case) \
+	+BASEDIR=$(riscv-test-dir) $(uvm-flags) -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi        \
 	${top_level}_optimized +permissive-off ++$(riscv-test-dir)/$@ ++$(target-options) | tee tmp/riscv-amo-tests-$@.log
 
 $(riscv-benchmarks): build
-	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +max-cycles=$(max_cycles) +UVM_TESTNAME=$(test_case) \
-	+BASEDIR=$(riscv-benchmarks-dir) $(uvm-flags) +jtag_rbb_enable=0 -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi   \
+	vsim${questa_version} +permissive $(questa-flags) $(questa-cmd) -lib $(library) +MAX_CYCLES=$(max_cycles) +UVM_TESTNAME=$(test_case) \
+	+BASEDIR=$(riscv-benchmarks-dir) $(uvm-flags)-gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi   \
 	${top_level}_optimized +permissive-off ++$(riscv-benchmarks-dir)/$@ ++$(target-options) | tee tmp/riscv-benchmarks-$@.log
 
 # can use -jX to run ci tests in parallel using X processes
@@ -297,14 +307,14 @@ torture-rtest-verilator: verilate
 	$(MAKE) check-torture
 
 run-torture: build
-	vsim${questa_version} +permissive $(questa-flags) -c -lib $(library) +max-cycles=$(max_cycles)+UVM_TESTNAME=$(test_case)             \
-	+BASEDIR=$(riscv-torture-dir) $(uvm-flags) +jtag_rbb_enable=0 -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi      \
+	vsim${questa_version} +permissive $(questa-flags) -c -lib $(library) +MAX_CYCLES=$(max_cycles)+UVM_TESTNAME=$(test_case)             \
+	+BASEDIR=$(riscv-torture-dir) $(uvm-flags)-gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi      \
 	-do "coverage save -onexit tmp/$@.ucdb; run -a; quit -code [coverage attribute -name TESTSTATUS -concise]"                           \
 	${top_level}_optimized +permissive-off +signature=$(riscv-torture-dir)/$(test-location).rtlsim.sig ++$(riscv-torture-dir)/$(test-location) ++$(target-options)
 
 run-torture-log: build
-	vsim${questa_version} +permissive $(questa-flags) -c -lib $(library) +max-cycles=$(max_cycles)+UVM_TESTNAME=$(test_case)                                                     \
-	+BASEDIR=$(riscv-torture-dir) $(uvm-flags) +jtag_rbb_enable=0 -gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi                                              \
+	vsim${questa_version} +permissive $(questa-flags) -c -lib $(library) +MAX_CYCLES=$(max_cycles)+UVM_TESTNAME=$(test_case)                                                     \
+	+BASEDIR=$(riscv-torture-dir) $(uvm-flags)-gblso $(RISCV)/lib/libfesvr.so -sv_lib $(dpi-library)/ariane_dpi                                              \
 	-do " set StdArithNoWarnings 1; set NumericStdNoWarnings 1; coverage save -onexit tmp/$@.ucdb; log -r /*; run -a; quit -code [coverage attribute -name TESTSTATUS -concise]" \
 	${top_level}_optimized +permissive-off +signature=$(riscv-torture-dir)/$(test-location).rtlsim.sig ++$(riscv-torture-dir)/$(test-location) ++$(target-options)
 	cp vsim.wlf $(riscv-torture-dir)/$(test-location).wlf
@@ -313,7 +323,7 @@ run-torture-log: build
 	cp transcript $(riscv-torture-dir)/$(test-location).transcript
 
 run-torture-verilator: verilate
-	$(ver-library)/Variane_testharness +max-cycles=$(max_cycles) +signature=$(riscv-torture-dir)/output/test.rtlsim.sig $(riscv-torture-dir)/output/test
+	$(ver-library)/Variane_testharness +MAX_CYCLES=$(max_cycles) +signature=$(riscv-torture-dir)/output/test.rtlsim.sig $(riscv-torture-dir)/output/test
 
 check-torture:
 	grep 'All signatures match for $(test-location)' $(riscv-torture-dir)/$(test-location).log

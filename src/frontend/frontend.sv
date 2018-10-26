@@ -12,7 +12,6 @@
 // Date: 08.02.2018
 // Description: Ariane Instruction Fetch Frontend
 
-
 import ariane_pkg::*;
 
 module frontend (
@@ -347,17 +346,17 @@ module frontend (
     assign icache_dreq_o.req   =  fifo_ready;
     assign fetch_entry_valid_o = ~fifo_empty;
 
-//pragma translate_off
-`ifndef VERILATOR
-  fetch_fifo_credits0 : assert property (
-      @(posedge clk_i) disable iff (~rst_ni) (fifo_credits_q <= FETCH_FIFO_DEPTH))
-         else $fatal("[frontend] fetch fifo credits must be <= FETCH_FIFO_DEPTH!");
-    initial begin
-        assert (FETCH_FIFO_DEPTH <= 8) else $fatal("[frontend] fetch fifo deeper than 8 not supported");
-        assert (FETCH_WIDTH == 32 || FETCH_WIDTH == 64) else $fatal("[frontend] fetch width != not supported");
-    end
-`endif
-//pragma translate_on
+    // pragma translate_off
+    `ifndef VERILATOR
+      fetch_fifo_credits0 : assert property (
+          @(posedge clk_i) disable iff (~rst_ni) (fifo_credits_q <= FETCH_FIFO_DEPTH))
+             else $fatal("[frontend] fetch fifo credits must be <= FETCH_FIFO_DEPTH!");
+        initial begin
+            assert (FETCH_FIFO_DEPTH <= 8) else $fatal("[frontend] fetch fifo deeper than 8 not supported");
+            assert (FETCH_WIDTH == 32 || FETCH_WIDTH == 64) else $fatal("[frontend] fetch width != not supported");
+        end
+    `endif
+    // pragma translate_on
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (~rst_ni) begin

@@ -165,9 +165,6 @@ package ariane_pkg;
     typedef struct packed {
         logic        valid;           // this is a valid hint
         logic [63:0] predict_address; // target address at which to jump, or not
-        logic        predict_taken;   // branch is taken
-                                      // in the lower 16 bit of the word
-        cf_t         cf_type;         // Type of control flow change
     } branchpredict_sbe_t;
 
     typedef struct packed {

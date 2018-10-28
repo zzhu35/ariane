@@ -33,14 +33,15 @@ module instr_scan (
     output logic [63:0] rvc_imm_o
 );
     assign is_rvc_o     = (instr_i[1:0] != 2'b11);
-    // check that rs1 is either x1 or x5 and that rs1 is not x1 or x5, TODO: check the fact about bit 7
-    assign rvi_return_o = rvi_jalr_o & ~instr_i[7] & ~instr_i[19] & ~instr_i[18] & ~instr_i[16] & instr_i[15];
-    assign rvi_call_o   = (rvi_jalr_o | rvi_jump_o) & instr_i[7]; // TODO: check that this captures calls
+    // check that rs1 is either x1 or x5 and that rs1 is not x1 or x5
+    assign rvi_return_o = rvi_jalr_o & ~instr_i[19] & ~instr_i[18] & ~instr_i[16] & instr_i[15];
+    // Opocde is JAL[R] and destination register is either x1 or x5
+    assign rvi_call_o   = (rvi_jalr_o | rvi_jump_o) & instr_i[11] & ~instr_i[10] & ~instr_i[8] & instr_i[7];
     // differentiates between JAL and BRANCH opcode, JALR comes from BHT
     assign rvi_imm_o    = (instr_i[3]) ? ariane_pkg::uj_imm(instr_i) : ariane_pkg::sb_imm(instr_i);
-    assign rvi_branch_o = (instr_i[6:0] == riscv::OpcodeBranch) ? 1'b1 : 1'b0;
-    assign rvi_jalr_o   = (instr_i[6:0] == riscv::OpcodeJalr)   ? 1'b1 : 1'b0;
-    assign rvi_jump_o   = (instr_i[6:0] == riscv::OpcodeJal)    ? 1'b1 : 1'b0;
+    assign rvi_branch_o = (instr_i[6:0] == riscv::OpcodeBranch);
+    assign rvi_jalr_o   = (instr_i[6:0] == riscv::OpcodeJalr);
+    assign rvi_jump_o   = (instr_i[6:0] == riscv::OpcodeJal);
     // opcode JAL
     assign rvc_jump_o   = (instr_i[15:13] == riscv::OpcodeC1J) & is_rvc_o & (instr_i[1:0] == riscv::OpcodeC1);
     // always links to register 0
@@ -60,7 +61,7 @@ module instr_scan (
                         & (instr_i[6:2] == 5'b00000) & is_rvc_o;
     assign rvc_call_o   = rvc_jalr_o;
 
-    // // differentiates between JAL and BRANCH opcode, JALR comes from BHT
+    // differentiates between JAL and BRANCH opcode, JALR comes from BHT
     assign rvc_imm_o    = (instr_i[14]) ? {{56{instr_i[12]}}, instr_i[6:5], instr_i[2], instr_i[11:10], instr_i[4:3], 1'b0}
                                        : {{53{instr_i[12]}}, instr_i[8], instr_i[10:9], instr_i[6], instr_i[7], instr_i[2], instr_i[11], instr_i[5:3], 1'b0};
 endmodule

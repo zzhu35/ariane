@@ -26,9 +26,13 @@
 // is already full. As instructions are in general easily replayed this should
 // increase the efficiency as I$ misses are potentially hidden. This stands in
 // contrast to pessimistic actions (early stalling) or credit based approaches.
-
+//
 // TODO(zarubaf): Replaying can be power hungry, provide a mitigation when
 // we do not want to replay (e.g.: processor halted, WFI).
+//
+// TODO(zarubaf): The instruction queues can be reduced to 16 bit. Potentially
+// the replay mechanism gets more complicated as it can be that a 32 bit instruction
+// can not be pushed at once.
 
 module instr_queue (
     input  logic                                       clk_i,
@@ -37,7 +41,7 @@ module instr_queue (
     input  logic [ariane_pkg::INSTR_PER_FETCH:0][31:0] instr_i,
     input  logic [ariane_pkg::INSTR_PER_FETCH:0][64:0] addr_i,
     input  logic [ariane_pkg::INSTR_PER_FETCH:0]       valid_i,
-    // Branch predict
+    // branch predict
     input  logic [63:0]                                predict_address_i,
     input  logic [ariane_pkg::INSTR_PER_FETCH:0]       taken_i,
     // we've encountered an exception, at this point the only possible exceptions are page-table faults
@@ -144,7 +148,7 @@ module instr_queue (
     // leading zero count = 1
     // 0 0 0 1 1 1 1 << 1 = 0 0 1 1 1 1 0
     // take the upper 4 bits: 0 0 1 1
-    assign branch_mask_extended = {{{ariane_pkg::INSTR_PER_FETCH-1}{1'b0}}, {{ariane_pkg::INSTR_PER_FETCH}{1'b1}}} <<< branch_index;
+    assign branch_mask_extended = {{{ariane_pkg::INSTR_PER_FETCH-1}{1'b0}}, {{ariane_pkg::INSTR_PER_FETCH}{1'b1}}} << branch_index;
     assign branch_mask = branch_mask_extended[ariane_pkg::INSTR_PER_FETCH*2-2:ariane_pkg::INSTR_PER_FETCH];
 
     // shift amount, e.g.: instructions we want to retire

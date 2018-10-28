@@ -42,12 +42,12 @@ module frontend (
     output logic               fetch_entry_valid_o, // instruction in IF is valid
     input  logic               fetch_ack_i          // ID acknowledged this instruction
 );
-    // Registers
+    // Registers, from I$
     logic [FETCH_WIDTH-1:0] icache_data_q;
     logic                   icache_valid_q;
     logic                   icache_ex_valid_q;
+    logic [63:0]            icache_vaddr_q;
 
-    logic [63:0] icache_vaddr_q;
     // BHT, BTB and RAS prediction
     bht_prediction_t bht_prediction;
     btb_prediction_t btb_prediction;
@@ -111,7 +111,9 @@ module frontend (
     logic [63:0] bht_address;
     logic [63:0] btb_address;
 
-    // control front-end + branch-prediction
+    // --------------------
+    // Branch Prediction
+    // --------------------
     always_comb begin : frontend_ctrl
         automatic logic take_rvi_cf; // take the control flow change (non-compressed)
         automatic logic take_rvc_cf; // take the control flow change (compressed)
@@ -358,6 +360,10 @@ module frontend (
     `endif
     // pragma translate_on
 
+    logic [FETCH_WIDTH-1:0] icache_data;
+    // re-align the cache line, address will always be 16 bit aligned
+    assign icache_data = icache_dreq_i.data >> {icache_dreq_i.vaddr[$clog2(FETCH_WIDTH/8)-1:1], 1'b0};
+
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (~rst_ni) begin
             npc_q                <= '0;
@@ -371,7 +377,7 @@ module frontend (
         end else begin
             npc_rst_load_q       <= 1'b0;
             npc_q                <= npc_d;
-            icache_data_q        <= icache_dreq_i.data;
+            icache_data_q        <= icache_data;
             icache_valid_q       <= icache_dreq_i.valid;
             icache_vaddr_q       <= icache_dreq_i.vaddr;
             icache_ex_valid_q    <= icache_dreq_i.ex.valid;

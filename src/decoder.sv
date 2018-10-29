@@ -943,6 +943,7 @@ module decoder (
                 riscv::OpcodeBranch: begin
                     imm_select              = SBIMM;
                     instruction_o.fu        = CTRL_FLOW;
+                    instruction_o.op        = BRANCH;
                     instruction_o.rs1[4:0]  = instr.stype.rs1;
                     instruction_o.rs2[4:0]  = instr.stype.rs2;
 

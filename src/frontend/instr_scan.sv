@@ -1,4 +1,4 @@
-//Copyright (C) 2018 to present,
+// Copyright (C) 2018 to present,
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
 // compliance with the License.  You may obtain a copy of the License at
@@ -7,17 +7,18 @@
 // this License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
+//
 // Author: Florian Zaruba, ETH Zurich
 // Date: 08.02.2018
 // Migrated: Luis Vitorio Cargnini, IEEE
 // Date: 09.06.2018
 
-// ------------------------------
-// Instruction Scanner
-// ------------------------------
+// Probes the instruction for various control flow related things like
+// detecting branches, jumps, calls, returns and jump registers.
+// This information is used in the instruction front-end to guide branch-prediction
+// and instruction fetch.
 module instr_scan (
     input  logic [31:0] instr_i,        // expect aligned instruction, compressed or not
-    output logic        is_rvc_o,
     output logic        rvi_return_o,
     output logic        rvi_call_o,
     output logic        rvi_branch_o,
@@ -32,9 +33,10 @@ module instr_scan (
     output logic        rvc_call_o,
     output logic [63:0] rvc_imm_o
 );
-    assign is_rvc_o     = (instr_i[1:0] != 2'b11);
-    // check that rs1 is either x1 or x5 and that rs1 is not x1 or x5
-    assign rvi_return_o = rvi_jalr_o & ~instr_i[19] & ~instr_i[18] & ~instr_i[16] & instr_i[15];
+    assign is_rvc     = (instr_i[1:0] != 2'b11);
+    // check that rs1 is either x1 or x5 and that rd doesn't have the same value
+    assign rvi_return_o = rvi_jalr_o & ~instr_i[19] & ~instr_i[18] & ~instr_i[16] & instr_i[15]
+                                     & (instr_i[19:15] != instr_i[11:7]);
     // Opocde is JAL[R] and destination register is either x1 or x5
     assign rvi_call_o   = (rvi_jalr_o | rvi_jump_o) & instr_i[11] & ~instr_i[10] & ~instr_i[8] & instr_i[7];
     // differentiates between JAL and BRANCH opcode, JALR comes from BHT
@@ -43,22 +45,22 @@ module instr_scan (
     assign rvi_jalr_o   = (instr_i[6:0] == riscv::OpcodeJalr);
     assign rvi_jump_o   = (instr_i[6:0] == riscv::OpcodeJal);
     // opcode JAL
-    assign rvc_jump_o   = (instr_i[15:13] == riscv::OpcodeC1J) & is_rvc_o & (instr_i[1:0] == riscv::OpcodeC1);
+    assign rvc_jump_o   = (instr_i[15:13] == riscv::OpcodeC1J) & is_rvc & (instr_i[1:0] == riscv::OpcodeC1);
     // always links to register 0
     assign rvc_jr_o     = (instr_i[15:13] == riscv::OpcodeC2JalrMvAdd)
                         & ~instr_i[12]
                         & (instr_i[6:2] == 5'b00000)
                         & (instr_i[1:0] == riscv::OpcodeC2)
-                        & is_rvc_o;
+                        & is_rvc;
     assign rvc_branch_o = ((instr_i[15:13] == riscv::OpcodeC1Beqz) | (instr_i[15:13] == riscv::OpcodeC1Bnez))
                         & (instr_i[1:0] == riscv::OpcodeC1)
-                        & is_rvc_o;
+                        & is_rvc;
     // check that rs1 is x1 or x5
     assign rvc_return_o = ~instr_i[11] & ~instr_i[10] & ~instr_i[8] & instr_i[7] & rvc_jr_o ;
     // always links to register 1 e.g.: it is a jump
     assign rvc_jalr_o   = (instr_i[15:13] == riscv::OpcodeC2JalrMvAdd)
                         & instr_i[12]
-                        & (instr_i[6:2] == 5'b00000) & is_rvc_o;
+                        & (instr_i[6:2] == 5'b00000) & is_rvc;
     assign rvc_call_o   = rvc_jalr_o;
 
     // differentiates between JAL and BRANCH opcode, JALR comes from BHT

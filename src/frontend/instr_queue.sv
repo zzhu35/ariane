@@ -35,35 +35,36 @@
 // can not be pushed at once.
 
 module instr_queue (
-    input  logic                                       clk_i,
-    input  logic                                       rst_ni,
-    input  logic                                       flush_i,
-    input  logic [ariane_pkg::INSTR_PER_FETCH:0][31:0] instr_i,
-    input  logic [ariane_pkg::INSTR_PER_FETCH:0][64:0] addr_i,
-    input  logic [ariane_pkg::INSTR_PER_FETCH:0]       valid_i,
-    // branch predict
-    input  logic [63:0]                                predict_address_i,
-    input  logic [ariane_pkg::INSTR_PER_FETCH:0]       taken_i,
+    input  logic                                           clk_i,
+    input  logic                                           rst_ni,
+    input  logic                                           flush_i,
+    input  logic [ariane_pkg::INSTR_PER_FETCH:0][31:0]     instr_i,
+    input  logic [ariane_pkg::INSTR_PER_FETCH:0][64:0]     addr_i,
+    input  logic [ariane_pkg::INSTR_PER_FETCH:0]           valid_i,
     // we've encountered an exception, at this point the only possible exceptions are page-table faults
-    input  logic                                       exception_i,
-    // queue is ready to accept more data
-    output logic                                       ready_o,
+    input  logic                                           exception_i,
+    // branch predict
+    input  logic [63:0]                                    predict_address_i,
+    input  logic [ariane_pkg::INSTR_PER_FETCH:0]           taken_i,
+    input  ariane_pkg::cf_t  [ariane_pkg::INSTR_PER_FETCH:0] cf_type_i,
+    output logic [$clog2(ariane_pkg::INSTR_PER_FETCH)-1:0] branch_index_o, // index of first taken branch
     // replay instruction because one of the FIFO was already full
-    output logic                                       replay_o,
-    output logic [63:0]                                replay_addr_o, // address at which to replay this instruction
+    output logic                                           replay_o,
+    output logic [63:0]                                    replay_addr_o, // address at which to replay this instruction
     // to processor backend
-    output fetch_entry_t                               fetch_entry_o,
-    output logic                                       fetch_entry_valid_o,
-    input  logic                                       fetch_entry_ack_i
+    output fetch_entry_t                                   fetch_entry_o,
+    output logic                                           fetch_entry_valid_o,
+    input  logic                                           fetch_entry_ack_i
 );
 
     typedef struct packed {
         logic [31:0] instr; // instruction word
-        logic        taken; // branch was taken
+        logic        cf; // branch was taken
         logic        ex;    // exception happened
     } instr_data_t;
 
     logic [ariane_pkg::INSTR_PER_FETCH*2-1:0][31:0] instr;
+    ariane_pkg::cf_t [ariane_pkg::INSTR_PER_FETCH*2-1:0] cf;
 
     // instruction queues
     instr_data_t [ariane_pkg::INSTR_PER_FETCH:0] instr_data_in, instr_data_out;
@@ -91,8 +92,8 @@ module instr_queue (
 
     for (genvar i = 0; i < ariane_pkg::INSTR_PER_FETCH; i++) begin : gen_instr_fifo
         fifo_v3 #(
-            .DEPTH      ( 2                 ),
-            .dtype      ( instr_data_t      )
+            .DEPTH      ( ariane_pkg::FETCH_FIFO_DEPTH ),
+            .dtype      ( instr_data_t                 )
         ) i_fifo_instr_data (
             .clk_i      ( clk_i             ),
             .rst_ni     ( rst_ni            ),
@@ -112,7 +113,7 @@ module instr_queue (
     assign push_address = |(taken_i);
 
     fifo_v3 #(
-        .DEPTH      ( 8                            ),
+        .DEPTH      ( ariane_pkg::FETCH_FIFO_DEPTH ), // TODO(zarubaf): Fork out to separate param
         .WIDth      ( 64                           ),
     ) i_fifo_address (
         .clk_i      ( clk_i                        ),
@@ -128,7 +129,6 @@ module instr_queue (
         .pop_i      ( pop_address                  )
     );
 
-    logic [$clog2(ariane_pkg::INSTR_PER_FETCH)-1:0] branch_index;
     logic [ariane_pkg::INSTR_PER_FETCH*2-2:0] branch_mask_extended;
     logic [ariane_pkg::INSTR_PER_FETCH-1:0] branch_mask;
 
@@ -136,10 +136,10 @@ module instr_queue (
     lzc #(
         .WIDTH   ( ariane_pkg::INSTR_PER_FETCH ),
         .MODE    ( 0                           ) // count trailing zeros
-    ) i_lzc_branch_mask (
-        .in_i    ( taken_i      ), // we want to count trailing zeros
-        .cnt_o   ( branch_index ), // first branch on branch_index
-        .empty_o (              )
+    ) i_lzc_branch_index (
+        .in_i    ( taken_i        ), // we want to count trailing zeros
+        .cnt_o   ( branch_index_o ), // first branch on branch_index
+        .empty_o (                )
     );
 
     // the first index is for sure valid
@@ -148,7 +148,7 @@ module instr_queue (
     // leading zero count = 1
     // 0 0 0 1 1 1 1 << 1 = 0 0 1 1 1 1 0
     // take the upper 4 bits: 0 0 1 1
-    assign branch_mask_extended = {{{ariane_pkg::INSTR_PER_FETCH-1}{1'b0}}, {{ariane_pkg::INSTR_PER_FETCH}{1'b1}}} << branch_index;
+    assign branch_mask_extended = {{{ariane_pkg::INSTR_PER_FETCH-1}{1'b0}}, {{ariane_pkg::INSTR_PER_FETCH}{1'b1}}} << branch_index_o;
     assign branch_mask = branch_mask_extended[ariane_pkg::INSTR_PER_FETCH*2-2:ariane_pkg::INSTR_PER_FETCH];
 
     // shift amount, e.g.: instructions we want to retire
@@ -190,11 +190,14 @@ module instr_queue (
     for (genvar i = 0; i < ariane_pkg::INSTR_PER_FETCH; i++) begin : gen_duplicate_instr_input
         assign instr[i] = instr_i[i];
         assign instr[2*i] = instr_i[i];
+        assign cf[i] = cf_type_i[i];
+        assign cf[2*i] = cf_type_i[i];
     end
 
     // shift the inputs
     for (genvar i = 0; i < ariane_pkg::INSTR_PER_FETCH; i++) begin : gen_fifo_input_select
-        assign instr_data_in[i] = instr[i + idx_is_q];
+        assign instr_data_in[i].instr = instr[i + idx_is_q];
+        assign instr_data_in[i].cf = cf[i + idx_is_q];
     end
 
     // ----------------------
@@ -240,7 +243,7 @@ module instr_queue (
             if (idx_ds_q[i]) begin
                 fetch_entry_o.instruction = instr_data_out[i].instr;
                 fetch_entry_o.instruction.ex.valid = instr_data_out[i].ex;
-                fetch_entry_o.branch_predict.valid = instr_data_out[i].taken;
+                fetch_entry_o.branch_predict.cf = instr_data_out[i].cf;
             end
         end
 
@@ -298,8 +301,11 @@ module instr_queue (
     // pragma translate_off
     `ifndef VERILATOR
         // assert that cache only hits on one way
-        assert property (
+        output_select_onehot: assert property (
           @(posedge clk_i) $onehot0(idx_ds_q)) else begin $error("Output select should be one-hot encoded"); $stop(); end
+        initial begin
+            assert (ariane_pkg::FETCH_FIFO_DEPTH <= 8) else $fatal("[frontend] fetch fifo deeper than 8 not supported");
+        end
     `endif
     // pragma translate_on
 endmodule

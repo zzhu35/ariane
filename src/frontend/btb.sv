@@ -44,7 +44,7 @@ module btb #(
 
     assign index     = vpc_i[PREDICTION_BITS - 1:ROW_ADDR_BITS + OFFSET];
     assign update_pc = btb_update_i.pc[PREDICTION_BITS - 1:ROW_ADDR_BITS + OFFSET];
-    assign update_row_index = btb_update_i.pc[ROW_ADDR_BITS - 1:OFFSET];
+    assign update_row_index = btb_update_i.pc[ROW_ADDR_BITS + OFFSET - 1:OFFSET];
 
     // output matching prediction
     assign btb_prediction_o = btb_q[index];

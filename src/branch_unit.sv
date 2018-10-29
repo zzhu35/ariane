@@ -52,6 +52,7 @@ module branch_unit (
         resolved_branch_o.is_mispredict  = 1'b0;
         resolved_branch_o.cf_type        = branch_predict_i.cf_type;
         // calculate next PC, depending on whether the instruction is compressed or not this may be different
+        // TODO(zarubaf): We already calculate this a couple of times, maybe re-use?
         next_pc                          = pc_i + ((is_compressed_instr_i) ? 64'h2 : 64'h4);
         // calculate target address simple 64 bit addition
         target_address                   = $unsigned($signed(jump_base) + $signed(fu_data_i.imm));
@@ -64,36 +65,26 @@ module branch_unit (
         resolved_branch_o.pc = pc_i;
 
         if (branch_valid_i) begin
-            // write target address which goes to pc gen
+            // write target address which goes to PC Gen
             resolved_branch_o.target_address = (branch_comp_res_i) ? target_address : next_pc;
-            resolved_branch_o.is_taken       = branch_comp_res_i;
-            // we've detected a branch in ID with the following parameters
-            // we mis-predicted e.g.: the predicted address is unequal to the actual address
-            if (target_address[0] == 1'b0) begin
-                // we've got a valid branch prediction
-                if (branch_predict_i.valid) begin
-                    // if the outcome doesn't match we've got a mis-predict
-                    if (branch_predict_i.predict_taken != branch_comp_res_i) begin
-                        resolved_branch_o.is_mispredict  = 1'b1;
-                    end
-                    // check if the address of the predict taken branch is correct
-                    if (branch_predict_i.predict_taken && target_address != branch_predict_i.predict_address) begin
-                        resolved_branch_o.is_mispredict  = 1'b1;
-                    end
-                // branch-prediction didn't do anything (e.g.: it fetched PC + 2/4), so if this branch is taken
-                // we also have a mis-predict
-                end else begin
-                    if (branch_comp_res_i) begin
-                        resolved_branch_o.is_mispredict = 1'b1;
-                    end
-                end
+            resolved_branch_o.is_taken = branch_comp_res_i;
+            // check the outcome of the branch speculation
+            if (fu_data_i.operator == BRANCH && branch_comp_res_i != (branch_predict_i.cf == ariane_pkg::Branch)) begin
+                // we mis-predicted the outcome
+                // if the outcome doesn't match we've got a mis-predict
+                resolved_branch_o.is_mispredict  = 1'b1;
+            end
+
+            // check if the address of the jump is correct
+            if (fu_data_i.operator == JALR && target_address != branch_predict_i.predict_address) begin
+                resolved_branch_o.is_mispredict  = 1'b1;
             end
             // to resolve the branch in ID
             resolve_branch_o = 1'b1;
         end
 
         // we placed the prediction on a non branch instruction
-        if (!branch_valid_i && fu_valid_i && branch_predict_i.valid) begin
+        if (!branch_valid_i && fu_valid_i && branch_predict_i.cf != None) begin
             // we should not end here if the front-end is bug free
             $fatal(1, "Mis-predicted on non branch instruction");
         end
@@ -106,8 +97,9 @@ module branch_unit (
         branch_exception_o.valid = 1'b0;
         branch_exception_o.tval  = pc_i;
         // only throw exception if this is indeed a branch
-        if (branch_valid_i && target_address[0] != 1'b0)
+        if (branch_valid_i && target_address[0] != 1'b0) begin
             branch_exception_o.valid = 1'b1;
+        end
     end
 
     // Keep a golden model of the predictors
@@ -147,7 +139,7 @@ module branch_unit (
         end
 
         bht_check_valid : assert property(
-            @(posedge clk_i) disable iff (~rst_ni) (bht[pc_i].valid |-> branch_predict_i.valid))
+            @(posedge clk_i) disable iff (~rst_ni) (bht[pc_i].valid |-> (branch_predict_i.cf != None)))
             else $warning("[BHT] We've already seen this branch but did not predict");
 
         // return address stack
@@ -163,11 +155,11 @@ module branch_unit (
                         // destination is x1 or x5 -> this is a call
                         if (rd_i == 5'd1 || rd_i == 5'd5) begin
                             // pop from call stack
-                            // assert(branch_predict_i.valid && branch_predict_i.cf_type == RAS) else $warning("Call wasn't detected correctly!");
+                            // assert((branch_predict_i.cf != None) && branch_predict_i.cf_type == RAS) else $warning("Call wasn't detected correctly!");
                         // this is a return
                         end else if (rs1_i == 5'd1 || rs1_i == 5'd5) begin
                             // pop from call stack
-                            // assert(branch_predict_i.valid && branch_predict_i.cf_type == RAS) else $warning("Return wasn't detected correctly!");
+                            // assert((branch_predict_i.cf != None) && branch_predict_i.cf_type == RAS) else $warning("Return wasn't detected correctly!");
                         end
                     end
 

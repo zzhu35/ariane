@@ -129,7 +129,7 @@ package ariane_pkg;
     // ---------------
 
     // leave as is (fails with >8 entries and wider fetch width)
-    localparam int unsigned FETCH_FIFO_DEPTH  = 8;
+    localparam int unsigned FETCH_FIFO_DEPTH  = 4;
     localparam int unsigned FETCH_WIDTH       = 32;
     // maximum instructions we can fetch on one request (we support compressed instructions)
     localparam int unsigned INSTR_PER_FETCH = FETCH_WIDTH / 16;
@@ -143,7 +143,7 @@ package ariane_pkg;
          logic        valid;
     } exception_t;
 
-    typedef enum logic [1:0] { BHT, BTB, RAS } cf_t;
+    typedef enum logic [1:0] { None, Branch, Jump, Return } cf_t;
 
     // branch-predict
     // this is the struct we get back from ex stage and we will use it to update
@@ -163,7 +163,7 @@ package ariane_pkg;
     // this is the struct which we will inject into the pipeline to guide the various
     // units towards the correct branch decision and resolve
     typedef struct packed {
-        logic        valid;           // this is a valid hint
+        cf_t         cf;              // type of control flow prediction
         logic [63:0] predict_address; // target address at which to jump, or not
     } branchpredict_sbe_t;
 
@@ -237,7 +237,7 @@ package ariane_pkg;
                                // comparisons
                                LTS, LTU, GES, GEU, EQ, NE,
                                // jumps
-                               JALR,
+                               JALR, BRANCH
                                // set lower than operations
                                SLTS, SLTU,
                                // CSR functions
@@ -363,15 +363,6 @@ package ariane_pkg;
     // ---------------
     // IF/ID Stage
     // ---------------
-    // instruction package from instruction frontend, unaligned
-   typedef struct packed {
-        logic [63:0]                address;        // the address of the instructions from below
-        logic [FETCH_WIDTH-1:0]     instruction;    // instruction word
-        branchpredict_sbe_t         branch_predict; // this field contains branch prediction information regarding the forward branch path
-        logic [INSTR_PER_FETCH-1:0] branch_taken;   // at which instruction is this branch taken?
-        logic                       page_fault;     // an instruction page fault happened
-    } frontend_fetch_t;
-
     // store the decompressed instruction
     typedef struct packed {
         logic [63:0]           address;        // the address of the instructions from below

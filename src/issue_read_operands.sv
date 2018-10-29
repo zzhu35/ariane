@@ -15,9 +15,7 @@
 
 import ariane_pkg::*;
 
-module issue_read_operands #(
-    parameter int unsigned NR_COMMIT_PORTS = 2
-)(
+module issue_read_operands (
     input  logic                                   clk_i,    // Clock
     input  logic                                   rst_ni,   // Asynchronous reset active low
     // flush

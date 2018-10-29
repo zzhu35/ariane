@@ -14,11 +14,7 @@
 
 import ariane_pkg::*;
 
-module scoreboard #(
-    parameter int unsigned NR_ENTRIES  = 8,
-    parameter int unsigned NR_WB_PORTS = 1,
-    parameter int unsigned NR_COMMIT_PORTS = 2
-)(
+module scoreboard (
     input  logic                                      clk_i,    // Clock
     input  logic                                      rst_ni,   // Asynchronous reset active low
     output logic                                      sb_full_o,
@@ -64,13 +60,13 @@ module scoreboard #(
     input exception_t [NR_WB_PORTS-1:0]               ex_i,        // exception from a functional unit (e.g.: ld/st exception)
     input logic [NR_WB_PORTS-1:0]                     wb_valid_i   // data in is valid
 );
-    localparam int unsigned BITS_ENTRIES      = $clog2(NR_ENTRIES);
+    localparam int unsigned BITS_ENTRIES      = $clog2(NR_SB_ENTRIES);
 
     // this is the FIFO struct of the issue queue
     struct packed {
         logic              issued; // this bit indicates whether we issued this instruction e.g.: if it is valid
         scoreboard_entry_t sbe;    // this is the score board entry we will send to ex
-    } mem_q [NR_ENTRIES-1:0], mem_n [NR_ENTRIES-1:0];
+    } mem_q [NR_SB_ENTRIES-1:0], mem_n [NR_SB_ENTRIES-1:0];
 
     logic [BITS_ENTRIES-1:0] issue_cnt_n,      issue_cnt_q;
     logic [BITS_ENTRIES-1:0] issue_pointer_n,  issue_pointer_q;
@@ -78,7 +74,7 @@ module scoreboard #(
     logic                          issue_full;
 
     // the issue queue is full don't issue any new instructions
-    assign issue_full = (issue_cnt_q == NR_ENTRIES-1);
+    assign issue_full = (issue_cnt_q == NR_SB_ENTRIES-1);
 
     assign sb_full_o = issue_full;
 
@@ -162,7 +158,7 @@ module scoreboard #(
         // Flush
         // ------
         if (flush_i) begin
-            for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
+            for (int unsigned i = 0; i < NR_SB_ENTRIES; i++) begin
                 // set all valid flags for all entries to zero
                 mem_n[i].issued       = 1'b0;
                 mem_n[i].sbe.valid    = 1'b0;
@@ -188,7 +184,7 @@ module scoreboard #(
         rd_clobber_gpr_o = '{default: NONE};
         rd_clobber_fpr_o = '{default: NONE};
         // check for all valid entries and set the clobber register accordingly
-        for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
+        for (int unsigned i = 0; i < NR_SB_ENTRIES; i++) begin
             if (mem_q[i].issued) begin
                 // output the functional unit which is going to clobber this register
                 if (is_rd_fpr(mem_q[i].sbe.op))
@@ -213,7 +209,7 @@ module scoreboard #(
         rs2_valid_o = 1'b0;
         rs3_valid_o = 1'b0;
 
-        for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
+        for (int unsigned i = 0; i < NR_SB_ENTRIES; i++) begin
             // only consider this entry if it is valid
             if (mem_q[i].issued) begin
                 // look at the appropriate fields and look whether there was an
@@ -283,7 +279,7 @@ module scoreboard #(
     //pragma translate_off
     `ifndef VERILATOR
     initial begin
-        assert (NR_ENTRIES == 2**BITS_ENTRIES) else $fatal("Scoreboard size needs to be a power of two.");
+        assert (NR_SB_ENTRIES == 2**BITS_ENTRIES) else $fatal("Scoreboard size needs to be a power of two.");
     end
 
     // assert that zero is never set

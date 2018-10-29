@@ -14,6 +14,8 @@
  *
  * Description: Common RISC-V definitions.
  */
+
+/* verilator lint_off DECLFILENAME */
 package riscv;
 
     // --------------------
@@ -516,3 +518,4 @@ package riscv;
     endfunction
     // pragma translate_on
 endpackage
+/* verilator lint_on DECLFILENAME */

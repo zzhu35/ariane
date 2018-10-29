@@ -16,11 +16,7 @@
 
 import ariane_pkg::*;
 
-module mmu #(
-      parameter int unsigned INSTR_TLB_ENTRIES = 4,
-      parameter int unsigned DATA_TLB_ENTRIES  = 4,
-      parameter int unsigned ASID_WIDTH        = 1
-)(
+module mmu (
         input  logic                            clk_i,
         input  logic                            rst_ni,
         input  logic                            flush_i,
@@ -88,8 +84,7 @@ module mmu #(
 
 
     tlb #(
-        .TLB_ENTRIES      ( INSTR_TLB_ENTRIES          ),
-        .ASID_WIDTH       ( ASID_WIDTH                 )
+        .TLB_ENTRIES      ( INSTR_TLB_ENTRIES          )
     ) i_itlb (
         .clk_i            ( clk_i                      ),
         .rst_ni           ( rst_ni                     ),
@@ -108,8 +103,7 @@ module mmu #(
     );
 
     tlb #(
-        .TLB_ENTRIES     ( DATA_TLB_ENTRIES             ),
-        .ASID_WIDTH      ( ASID_WIDTH                   )
+        .TLB_ENTRIES     ( DATA_TLB_ENTRIES             )
     ) i_dtlb (
         .clk_i            ( clk_i                       ),
         .rst_ni           ( rst_ni                      ),
@@ -128,9 +122,7 @@ module mmu #(
     );
 
 
-    ptw  #(
-        .ASID_WIDTH             ( ASID_WIDTH            )
-    ) i_ptw (
+    ptw i_ptw (
         .clk_i                  ( clk_i                 ),
         .rst_ni                 ( rst_ni                ),
         .ptw_active_o           ( ptw_active            ),

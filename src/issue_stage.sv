@@ -15,11 +15,7 @@
 
 import ariane_pkg::*;
 
-module issue_stage #(
-    parameter int unsigned NR_ENTRIES = 8,
-    parameter int unsigned NR_WB_PORTS = 4,
-    parameter int unsigned NR_COMMIT_PORTS = 2
-)(
+module issue_stage (
     input  logic                                     clk_i,     // Clock
     input  logic                                     rst_ni,    // Asynchronous reset active low
 
@@ -118,10 +114,7 @@ module issue_stage #(
     // ---------------------------------------------------------
     // 2. Manage instructions in a scoreboard
     // ---------------------------------------------------------
-    scoreboard #(
-        .NR_ENTRIES (NR_ENTRIES ),
-        .NR_WB_PORTS(NR_WB_PORTS)
-    ) i_scoreboard (
+    scoreboard i_scoreboard (
         .sb_full_o             ( sb_full_o                                 ),
         .unresolved_branch_i   ( 1'b0                                      ),
         .rd_clobber_gpr_o      ( rd_clobber_gpr_sb_iro                     ),

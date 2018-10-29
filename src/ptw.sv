@@ -16,9 +16,7 @@
 /* verilator lint_off WIDTH */
 import ariane_pkg::*;
 
-module ptw #(
-        parameter int ASID_WIDTH = 1
-    )(
+module ptw (
     input  logic                    clk_i,                  // Clock
     input  logic                    rst_ni,                 // Asynchronous reset active low
     input  logic                    flush_i,                // flush everything, we need to do this because

@@ -36,6 +36,9 @@ module btb #(
     localparam PREDICTION_BITS = $clog2(NR_ROWS) + OFFSET + ROW_ADDR_BITS;
     // prevent aliasing to degrade performance
     localparam ANTIALIAS_BITS = 8;
+    // we are not interested in all bits of the address
+    unread i_unread (.d_i(|vpc_i));
+
     // typedef for all branch target entries
     // we may want to try to put a tag field that fills the rest of the PC in-order to mitigate aliasing effects
     ariane_pkg::btb_prediction_t btb_d [NR_ROWS-1:0][ariane_pkg::INSTR_PER_FETCH-1:0], btb_q [NR_ROWS-1:0][ariane_pkg::INSTR_PER_FETCH-1:0];
@@ -47,7 +50,9 @@ module btb #(
     assign update_row_index = btb_update_i.pc[ROW_ADDR_BITS + OFFSET - 1:OFFSET];
 
     // output matching prediction
-    assign btb_prediction_o = btb_q[index];
+    for (genvar i = 0; i < ariane_pkg::INSTR_PER_FETCH; i++) begin : gen_btb_output
+        assign btb_prediction_o[i] = btb_q[index][i]; // workaround
+    end
 
     // -------------------------
     // Update Branch Prediction
@@ -73,7 +78,9 @@ module btb #(
             // evict all entries
             if (flush_i) begin
                 for (int i = 0; i < NR_ROWS; i++) begin
-                    btb_q[i].valid <=  1'b0;
+                    for (int j = 0; j < ariane_pkg::INSTR_PER_FETCH; j++) begin
+                        btb_q[i][j].valid <=  1'b0;
+                    end
                 end
             end else begin
                 btb_q <=  btb_d;

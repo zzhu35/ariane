@@ -14,9 +14,7 @@
 
 import ariane_pkg::*;
 
-module commit_stage #(
-    parameter int unsigned NR_COMMIT_PORTS = 2
-)(
+module commit_stage (
     input  logic                                    clk_i,
     input  logic                                    rst_ni,
     input  logic                                    halt_i,             // request to halt the core

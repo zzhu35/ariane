@@ -15,7 +15,7 @@
  * Description: Debug-module package, contains common system definitions.
  *
  */
-
+/* verilator lint_off DECLFILENAME */
 package dm;
     localparam logic [3:0] DbgVersion013 = 4'h2;
     // size of program buffer in junks of 32-bit words
@@ -215,3 +215,4 @@ package dm;
     } dmi_resp_t;
 
 endpackage
+/* verilator lint_on DECLFILENAME */

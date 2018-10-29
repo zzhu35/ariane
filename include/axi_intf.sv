@@ -15,7 +15,7 @@
 
 import axi_pkg::*;
 
-
+/* verilator lint_off DECLFILENAME */
 /// An AXI4 interface.
 interface AXI_BUS #(
   parameter AXI_ADDR_WIDTH = -1,
@@ -319,3 +319,4 @@ interface AXI_ARBITRATION #(
   modport req(output in_req, out_ack, input  out_req, out_sel, in_ack);
 
 endinterface
+/* verilator lint_on DECLFILENAME */

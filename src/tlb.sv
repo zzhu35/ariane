@@ -17,8 +17,7 @@
 import ariane_pkg::*;
 
 module tlb #(
-      parameter int unsigned TLB_ENTRIES = 4,
-      parameter int unsigned ASID_WIDTH  = 1
+      parameter int unsigned TLB_ENTRIES = 4
   )(
     input  logic                    clk_i,    // Clock
     input  logic                    rst_ni,   // Asynchronous reset active low

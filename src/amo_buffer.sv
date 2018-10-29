@@ -34,6 +34,7 @@ module amo_buffer (
 );
     logic flush_amo_buffer;
     logic amo_valid;
+    logic alm_full, alm_empty;
 
     typedef struct packed {
         ariane_pkg::amo_t        op;
@@ -72,12 +73,14 @@ module amo_buffer (
         .testmode_i   ( 1'b0             ),
         .full_o       ( amo_valid        ),
         .empty_o      ( ready_o          ),
-        .alm_full_o   (  ), // left open
-        .alm_empty_o  (  ), // left open
+        .alm_full_o   ( alm_full         ), // left open
+        .alm_empty_o  ( alm_empty        ), // left open
         .data_i       ( amo_data_in      ),
         .push_i       ( valid_i          ),
         .data_o       ( amo_data_out     ),
         .pop_i        ( amo_resp_i.ack   )
     );
+
+    unread i_unread (.d_i(|{alm_full, alm_empty}));
 
 endmodule

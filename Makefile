@@ -93,6 +93,7 @@ src :=  $(filter-out src/ariane_regfile.sv, $(wildcard src/*.sv))      \
         src/common_cells/src/fifo_v2.sv                                \
         src/common_cells/src/fifo_v1.sv                                \
         src/common_cells/src/lzc.sv                                    \
+        src/common_cells/src/unread.sv                                 \
         src/common_cells/src/rrarbiter.sv                              \
         src/common_cells/src/pipe_reg_simple.sv                        \
         src/common_cells/src/lfsr_8bit.sv                              \
@@ -238,6 +239,8 @@ verilate_command := $(verilator)                                                
                     --unroll-count 256                                                     \
                     -Werror-PINMISSING                                                     \
                     -Werror-IMPLICIT                                                       \
+                    -Werror-UNDRIVEN                                                       \
+                    -Werror-VARHIDDEN                                                      \
                     -Wno-fatal                                                             \
                     -Wno-PINCONNECTEMPTY                                                   \
                     -Wno-ASSIGNDLY                                                         \

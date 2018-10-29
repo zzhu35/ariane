@@ -14,10 +14,7 @@
 
 import ariane_pkg::*;
 
-module csr_regfile #(
-    parameter int          ASID_WIDTH      = 1,
-    parameter int unsigned NR_COMMIT_PORTS = 2
-)(
+module csr_regfile (
     input  logic                  clk_i,                      // Clock
     input  logic                  rst_ni,                     // Asynchronous reset active low
     input  logic                  time_irq_i,                 // Timer threw a interrupt

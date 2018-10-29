@@ -17,7 +17,7 @@ import std_cache_pkg::*;
 
 module std_nbdcache #(
     parameter logic [63:0] CACHE_START_ADDR = 64'h8000_0000
-)(
+) (
     input  logic                           clk_i,       // Clock
     input  logic                           rst_ni,      // Asynchronous reset active low
     // Cache management
@@ -197,7 +197,8 @@ module std_nbdcache #(
     // ----------------
     // Valid/Dirty Regs
     // ----------------
-
+    // TODO(zarubaf, msfschaffner): Improve this section (maybe by adding a FPGA wrapper)
+    // this doesn't make too much sense.
     // align each valid/dirty bit pair to a byte boundary in order to leverage byte enable signals.
     // note: if you have an SRAM that supports flat bit enables for your target technology,
     // you can use it here to save the extra 4x overhead introduced by this workaround.
@@ -206,6 +207,8 @@ module std_nbdcache #(
     for (genvar i = 0; i < DCACHE_SET_ASSOC; i++) begin
         assign dirty_wdata[8*i]   = wdata_ram.dirty;
         assign dirty_wdata[8*i+1] = wdata_ram.valid;
+        // assign to zero, this is just for alignment issues for the FPGA synthesis
+        assign dirty_wdata[8*i+2 +: 6] = '0;
         assign rdata_ram[i].dirty = dirty_rdata[8*i];
         assign rdata_ram[i].valid = dirty_rdata[8*i+1];
     end
@@ -229,8 +232,7 @@ module std_nbdcache #(
     // ------------------------------------------------
     tag_cmp #(
         .NR_PORTS           ( 4                  ),
-        .ADDR_WIDTH         ( DCACHE_INDEX_WIDTH ),
-        .DCACHE_SET_ASSOC   ( DCACHE_SET_ASSOC   )
+        .ADDR_WIDTH         ( DCACHE_INDEX_WIDTH )
     ) i_tag_cmp (
         .req_i              ( req         ),
         .gnt_o              ( gnt         ),
@@ -271,8 +273,7 @@ module tag_cmp #(
         parameter int unsigned NR_PORTS          = 3,
         parameter int unsigned ADDR_WIDTH        = 64,
         parameter type data_t                    = cache_line_t,
-        parameter type be_t                      = cl_be_t,
-        parameter int unsigned DCACHE_SET_ASSOC = 8
+        parameter type be_t                      = cl_be_t
     )(
         input  logic                                         clk_i,
         input  logic                                         rst_ni,

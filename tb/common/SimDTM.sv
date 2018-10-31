@@ -33,6 +33,8 @@ module SimDTM(
   output [31:0] exit
 );
 
+  /* verilator lint_off ASSIGNDLY */
+  /* verilator lint_off BLKSEQ */
   bit r_reset;
 
   wire #0.1 __debug_req_ready = debug_req_ready;
@@ -78,4 +80,6 @@ module SimDTM(
       );
     end
   end
+  /* verilator lint_off BLKSEQ */
+  /* verilator lint_on ASSIGNDLY */
 endmodule

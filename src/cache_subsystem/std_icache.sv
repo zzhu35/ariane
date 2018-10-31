@@ -173,7 +173,7 @@ module std_icache (
     assign data_be = be;
     assign data_wdata = wdata;
 
-    assign dreq_o.ex = areq_i.fetch_exception;
+    assign dreq_o.ex = areq_i.fetch_exception.valid;
 
     assign addr = (state_q==FLUSH) ? cnt_q : vaddr_d[ICACHE_INDEX_WIDTH-1:ICACHE_BYTE_OFFSET];
 

@@ -21,7 +21,7 @@
 //                 Register 0 is fixed to 0. This register file is based on
 //                 flip flops.
 //
-
+/* verilator lint_off DECLFILENAME */
 module ariane_regfile #(
   parameter int unsigned DATA_WIDTH     = 32,
   parameter int unsigned NR_READ_PORTS  = 2,
@@ -83,3 +83,4 @@ module ariane_regfile #(
   end
 
 endmodule
+/* verilator lint_on DECLFILENAME */

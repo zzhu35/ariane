@@ -57,7 +57,7 @@ module ariane #(
     // --------------
     // IF <-> ID
     // --------------
-    frontend_fetch_t          fetch_entry_if_id;
+    fetch_entry_t             fetch_entry_if_id;
     logic                     fetch_valid_if_id;
     logic                     decode_ack_id_if;
 
@@ -269,10 +269,7 @@ module ariane #(
     // ---------
     // Issue
     // ---------
-    issue_stage #(
-        .NR_ENTRIES                 ( NR_SB_ENTRIES                   ),
-        .NR_WB_PORTS                ( NR_WB_PORTS                     )
-    ) issue_stage_i (
+    issue_stage i_issue_stage (
         .clk_i,
         .rst_ni,
         .sb_full_o                  ( sb_full                         ),
@@ -449,9 +446,7 @@ module ariane #(
     // ---------
     // CSR
     // ---------
-    csr_regfile #(
-        .ASID_WIDTH             ( ASID_WIDTH                    )
-    ) csr_regfile_i (
+    csr_regfile csr_regfile_i (
         .flush_o                ( flush_csr_ctrl                ),
         .halt_csr_o             ( halt_csr_ctrl                 ),
         .commit_instr_i         ( commit_instr_id_commit        ),

@@ -14,7 +14,7 @@
  *
  * Description: Contains Ariane's AXI ports, does not contain user ports
  */
-
+/* verilator lint_off DECLFILENAME */
 package ariane_axi;
     // 4 is recommended by AXI standard, so lets stick to it, do not change
     localparam IdWidth   = 4;
@@ -101,3 +101,4 @@ package ariane_axi;
     } resp_t;
 
 endpackage
+/* verilator lint_on DECLFILENAME */

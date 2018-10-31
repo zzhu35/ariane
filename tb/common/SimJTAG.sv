@@ -30,7 +30,8 @@ module SimJTAG #(
 
                    output [31:0] exit
                    );
-
+   /* verilator lint_off ASSIGNDLY */
+   /* verilator lint_off BLKSEQ */
    reg [31:0]                    tickCounterReg;
    wire [31:0]                   tickCounterNxt;
 
@@ -79,5 +80,6 @@ module SimJTAG #(
          end // if (enable && init_done_sticky)
       end // else: !if(reset || r_reset)
    end // always @ (posedge clock)
-
+   /* verilator lint_on BLKSEQ */
+   /* verilator lint_on ASSIGNDLY */
 endmodule

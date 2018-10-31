@@ -21,7 +21,6 @@ module bht #(
     input  logic                        rst_ni,
     input  logic                        flush_i,
     input  logic                        debug_mode_i,
-
     input  logic [63:0]                 vpc_i,
     input  ariane_pkg::bht_update_t     bht_update_i,
     // we potentially need INSTR_PER_FETCH predictions/cycle
@@ -35,6 +34,8 @@ module bht #(
     localparam ROW_ADDR_BITS = $clog2(ariane_pkg::INSTR_PER_FETCH);
     // number of bits we should use for prediction
     localparam PREDICTION_BITS = $clog2(NR_ROWS) + OFFSET + ROW_ADDR_BITS;
+    // we are not interested in all bits of the address
+    unread i_unread (.d_i(|vpc_i));
 
     struct packed {
         logic       valid;
@@ -82,14 +83,19 @@ module bht #(
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (~rst_ni) begin
-            for (int unsigned i = 0; i < NR_ENTRIES; i++)
-                bht_q[i] <= '0;
+            for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
+                for (int j = 0; j < ariane_pkg::INSTR_PER_FETCH; j++) begin
+                    bht_q[i][j] <= '0;
+                end
+            end
         end else begin
             // evict all entries
             if (flush_i) begin
                 for (int i = 0; i < NR_ENTRIES; i++) begin
-                    bht_q[i].valid <=  1'b0;
-                    bht_q[i].saturation_counter <= 2'b10;
+                    for (int j = 0; j < ariane_pkg::INSTR_PER_FETCH; j++) begin
+                        bht_q[i][j].valid <=  1'b0;
+                        bht_q[i][j].saturation_counter <= 2'b10;
+                    end
                 end
             end else begin
                 bht_q <= bht_d;

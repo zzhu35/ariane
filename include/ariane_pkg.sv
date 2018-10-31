@@ -21,23 +21,27 @@ package ariane_pkg;
     // ---------------
     // Global Config
     // ---------------
-    localparam NR_SB_ENTRIES = 8; // number of scoreboard entries
-    localparam TRANS_ID_BITS = $clog2(NR_SB_ENTRIES); // depending on the number of scoreboard entries we need that many bits
+    localparam int unsigned NR_SB_ENTRIES = 8; // number of scoreboard entries
+    localparam int unsigned TRANS_ID_BITS = $clog2(NR_SB_ENTRIES); // depending on the number of scoreboard entries we need that many bits
                                                       // to uniquely identify the entry in the scoreboard
-    localparam ASID_WIDTH    = 1;
-    localparam BTB_ENTRIES   = 64;
-    localparam BHT_ENTRIES   = 128;
-    localparam RAS_DEPTH     = 2;
-    localparam BITS_SATURATION_COUNTER = 2;
-    localparam NR_COMMIT_PORTS = 2;
+    // Virtual Memory
+    localparam int unsigned ASID_WIDTH = 1;
+    localparam int unsigned INSTR_TLB_ENTRIES = 16;
+    localparam int unsigned DATA_TLB_ENTRIES  = 16;
+    // Branch Prediction
+    localparam int unsigned BTB_ENTRIES   = 64;
+    localparam int unsigned BHT_ENTRIES   = 128;
+    localparam int unsigned RAS_DEPTH     = 2;
+    localparam int unsigned BITS_SATURATION_COUNTER = 2;
+    localparam int unsigned NR_COMMIT_PORTS = 2;
 
-    localparam ENABLE_RENAME = 1'b1;
+    localparam bit ENABLE_RENAME = 1'b1;
 
-    localparam ISSUE_WIDTH = 1;
+    localparam int unsigned ISSUE_WIDTH = 1; // only one supported at the moment
     // amount of pipeline registers inserted for load/store return path
     // this can be tuned to trade-off IPC vs. cycle time
-    localparam NR_LOAD_PIPE_REGS = 1;
-    localparam NR_STORE_PIPE_REGS = 0;
+    localparam int unsigned NR_LOAD_PIPE_REGS = 1;
+    localparam int unsigned NR_STORE_PIPE_REGS = 0;
 
     // depth of store-buffers, this needs to be a power of two
     localparam int unsigned DEPTH_SPEC   = 4;
@@ -171,7 +175,6 @@ package ariane_pkg;
         logic        valid;
         logic [63:0] pc;             // update at PC
         logic [63:0] target_address;
-        logic        clear;
     } btb_update_t;
 
     typedef struct packed {
@@ -237,7 +240,7 @@ package ariane_pkg;
                                // comparisons
                                LTS, LTU, GES, GEU, EQ, NE,
                                // jumps
-                               JALR, BRANCH
+                               JALR, BRANCH,
                                // set lower than operations
                                SLTS, SLTU,
                                // CSR functions
@@ -448,7 +451,7 @@ package ariane_pkg;
         logic                     valid;                  // signals a valid read
         logic [FETCH_WIDTH-1:0]   data;                   // 2+ cycle out: tag
         logic [63:0]              vaddr;                  // virtual address out
-        exception_t               ex;                     // we've encountered an exception
+        logic                     ex;                     // we've encountered an exception
     } icache_dreq_o_t;
 
     // AMO request going to cache. this request is unconditionally valid as soon

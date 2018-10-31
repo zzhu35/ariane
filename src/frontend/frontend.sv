@@ -37,8 +37,8 @@ module frontend (
     input  logic               ex_valid_i,         // exception is valid - from commit
     input  logic               set_debug_pc_i,     // jump to debug address
     // Instruction Fetch
-    input  icache_dreq_o_t     icache_dreq_i,
     output icache_dreq_i_t     icache_dreq_o,
+    input  icache_dreq_o_t     icache_dreq_i,
     // instruction output port -> to processor back-end
     output fetch_entry_t       fetch_entry_o,       // fetch entry containing all relevant data for the ID stage
     output logic               fetch_entry_valid_o, // instruction in IF is valid
@@ -49,6 +49,7 @@ module frontend (
     logic                   icache_valid_q;
     logic                   icache_ex_valid_q;
     logic [63:0]            icache_vaddr_q;
+    logic                   instr_queue_ready;
     // upper-most branch-prediction from last cycle
     btb_prediction_t        btb_q;
     bht_prediction_t        bht_q;
@@ -63,15 +64,13 @@ module frontend (
     logic [63:0]   replay_addr;
 
     // shift amount
-    logic [$clog2(INSTR_PER_FETCH)-1:0] shamt;
+    logic [$clog2(ariane_pkg::INSTR_PER_FETCH)-1:0] shamt;
     // address will always be 16 bit aligned, make this explicit here
-    assign shamt = {icache_dreq_i.vaddr[$clog2(FETCH_WIDTH / 8)-1:1], 1'b0};
+    assign shamt = icache_dreq_i.vaddr[$clog2(ariane_pkg::INSTR_PER_FETCH):1];
 
     // -----------------------
     // Ctrl Flow Speculation
     // -----------------------
-    // index of first branch in instruction fetch package
-    logic [$clog2(ariane_pkg::INSTR_PER_FETCH)-1:0] branch_index;
     // RVI ctrl flow prediction
     logic [INSTR_PER_FETCH-1:0]       rvi_return, rvi_call, rvi_branch,
                                       rvi_jalr, rvi_jump;
@@ -97,24 +96,26 @@ module frontend (
     logic [63:0]     ras_update;
 
     // Instruction FIFO
-    logic [63:0]                          predict_address;
-    logic [ariane_pkg::INSTR_PER_FETCH:0] taken;
-    cf_t  [ariane_pkg::INSTR_PER_FETCH:0] cf_type;
-    logic [ariane_pkg::INSTR_PER_FETCH:0] taken_rvi_cf;
-    logic [ariane_pkg::INSTR_PER_FETCH:0] taken_rvc_cf;
+    logic [63:0]                            predict_address;
+    logic [ariane_pkg::INSTR_PER_FETCH-1:0] taken;
+    cf_t  [ariane_pkg::INSTR_PER_FETCH-1:0] cf_type;
+    logic [ariane_pkg::INSTR_PER_FETCH-1:0] taken_rvi_cf;
+    logic [ariane_pkg::INSTR_PER_FETCH-1:0] taken_rvc_cf;
+
+    logic serving_unaligned;
 
     // Re-align instructions
     instr_realign i_instr_realign (
-        .clk_i       ( clk_i                    ),
-        .rst_ni      ( rst_ni                   ),
-        .flush_i     ( icache_dreq_o.kill_s2    ),
-        .valid_i     ( icache_valid_q           ),
-        .address_i   ( icache_vaddr_q           ),
-        .taken_i     ( (|taken)                 ),
-        .data_i      ( icache_data_q            ),
-        .valid_o     ( instruction_valid        ),
-        .addr_o      ( addr                     ),
-        .instr_o     ( instr                    )
+        .clk_i               ( clk_i                 ),
+        .rst_ni              ( rst_ni                ),
+        .flush_i             ( icache_dreq_o.kill_s2 ),
+        .valid_i             ( icache_valid_q        ),
+        .serving_unaligned_o ( serving_unaligned     ),
+        .address_i           ( icache_vaddr_q        ),
+        .data_i              ( icache_data_q         ),
+        .valid_o             ( instruction_valid     ),
+        .addr_o              ( addr                  ),
+        .instr_o             ( instr                 )
     );
 
     // --------------------
@@ -123,21 +124,23 @@ module frontend (
     // select the right branch prediction result
     // in case we are serving an unaligned instruction in instr[0] we need to take
     // the prediction we saved from the previous fetch
-    assign bht_prediction_shifted[0] = (serving_unaligned) ? bht_q : bht_prediction[addr_i[$clog2(INSTR_PER_FETCH) + 1:1][i];
-    assign btb_prediction_shifted[0] = (serving_unaligned) ? btb_q : btb_prediction[addr_i[$clog2(INSTR_PER_FETCH) + 1:1][i];
+    assign bht_prediction_shifted[0] = (serving_unaligned) ? bht_q : bht_prediction[0];
+    assign btb_prediction_shifted[0] = (serving_unaligned) ? btb_q : btb_prediction[0];
     // for all other predictions we can use the generated address to index
     // into the branch prediction data structures
     for (genvar i = 1; i < INSTR_PER_FETCH; i++) begin : gen_prediction_address
-        assign bht_prediction_shifted[i] = bht_prediction[addr_i[$clog2(INSTR_PER_FETCH) + 1:1][i];
-        assign btb_prediction_shifted[i] = btb_prediction[addr_i[$clog2(INSTR_PER_FETCH) + 1:1][i];
+        assign bht_prediction_shifted[i] = bht_prediction[addr[i][$clog2(INSTR_PER_FETCH):1]];
+        assign btb_prediction_shifted[i] = btb_prediction[addr[i][$clog2(INSTR_PER_FETCH):1]];
     end
     // for the return address stack it doens't matter as we have the
     // address of the call/return already
+    logic bp_valid;
 
     logic [INSTR_PER_FETCH-1:0] is_branch;
     logic [INSTR_PER_FETCH-1:0] is_call;
     logic [INSTR_PER_FETCH-1:0] is_jump;
     logic [INSTR_PER_FETCH-1:0] is_return;
+    logic [INSTR_PER_FETCH-1:0] is_jalr;
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
         // branch history table -> BHT
@@ -149,7 +152,7 @@ module frontend (
         // unconditional jumps with known target -> immediately resolved
         assign is_jump[i] = instruction_valid[i] & (rvi_jump[i] | rvc_jump[i]);
         // unconditional jumps with unknown target -> BTB
-        assign is_jalr[i] = instruction_valid[i] & ~is_return[i] & ~is_call[i] & (rvi_jalr[i] | rvc_jalr[i]);
+        assign is_jalr[i] = instruction_valid[i] & ~is_return[i] & ~is_call[i] & (rvi_jalr[i] | rvc_jalr[i] | rvc_jr[i]);
     end
 
     // taken/not taken
@@ -159,7 +162,7 @@ module frontend (
         taken_rvc_cf = '0;
         predict_address = '0;
 
-        cf_type = {default: ariane_pkg::None};
+        for (int i = 0; i < INSTR_PER_FETCH; i++)  cf_type[i] = ariane_pkg::None;
 
         ras_push = 1'b0;
         ras_pop = 1'b0;
@@ -173,8 +176,8 @@ module frontend (
                 4'b0001: begin
                     ras_pop = 1'b0;
                     ras_push = 1'b0;
-                    if (btb_prediction[i].valid) begin
-                        predict_address = btb_prediction[i].target_address;
+                    if (btb_prediction_shifted[i].valid) begin
+                        predict_address = btb_prediction_shifted[i].target_address;
                         taken[i] = 1'b1;
                         cf_type[i] = ariane_pkg::Jump;
                     end
@@ -204,9 +207,9 @@ module frontend (
                     ras_pop = 1'b0;
                     ras_push = 1'b0;
                     // if we have a valid dynamic prediction use it
-                    if (bht_prediction.valid) begin
-                        taken_rvi_cf[i] = rvi_branch[i] & bht_prediction[i].taken;
-                        taken_rvc_cf[i] = rvc_branch[i] & bht_prediction[i].taken;
+                    if (bht_prediction_shifted[i].valid) begin
+                        taken_rvi_cf[i] = rvi_branch[i] & bht_prediction_shifted[i].taken;
+                        taken_rvc_cf[i] = rvc_branch[i] & bht_prediction_shifted[i].taken;
                     // otherwise default to static prediction
                     end else begin
                         // set if immediate is negative - static prediction
@@ -223,30 +226,19 @@ module frontend (
                 ras_update = addr[i] + (rvc_call[i] ? 2 : 4);
             end
             // calculate the jump target address
-            if (take_rvc_cf[i] || take_rvi_cf[i]) begin
+            if (taken_rvc_cf[i] || taken_rvi_cf[i]) begin
                 taken[i] = 1'b1;
-                predict_address = addr[i] + (take_rvc_cf[i]) ? rvc_imm[i] : rvi_imm[i];
+                predict_address = addr[i] + (taken_rvc_cf[i] ? rvc_imm[i] : rvi_imm[i]);
             end
         end
-
-
-    end
-    // select branch behavior
-    always_comb begin
-
-        unique case (cf_type[branch_index])
-            ariane_pkg::Branch: begin
-
-            end
-            ariane_pkg::Return:;
-            ariane_pkg::Jump:;
-            ariane_pkg::None:;
-        endcase
     end
 
+    assign bp_valid = (|taken);
     assign is_mispredict = resolved_branch_i.valid & resolved_branch_i.is_mispredict;
 
     // Cache interface
+    assign icache_dreq_o.req = instr_queue_ready;
+    assign if_ready = icache_dreq_i.ready & instr_queue_ready;
     // We need to flush the cache pipeline if:
     // 1. We mispredicted
     // 2. Want to flush the whole processor front-end
@@ -346,23 +338,25 @@ module frontend (
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (~rst_ni) begin
-            npc_rst_load_q       <= 1'b1;
-            npc_q                <= '0;
-            icache_data_q        <= '0;
-            icache_valid_q       <= 1'b0;
-            icache_vaddr_q       <= 'b0;
-            icache_ex_valid_q    <= 1'b0;
+            npc_rst_load_q    <= 1'b1;
+            npc_q             <= '0;
+            icache_data_q     <= '0;
+            icache_valid_q    <= 1'b0;
+            icache_vaddr_q    <= 'b0;
+            icache_ex_valid_q <= 1'b0;
+            btb_q             <= '0;
+            bht_q             <= '0;
         end else begin
-            npc_rst_load_q       <= 1'b0;
-            npc_q                <= npc_d;
-            icache_valid_q       <= icache_dreq_i.valid;
+            npc_rst_load_q    <= 1'b0;
+            npc_q             <= npc_d;
+            icache_valid_q    <= icache_dreq_i.valid;
             if (icache_dreq_i.valid) begin
                 icache_data_q        <= icache_data;
                 icache_vaddr_q       <= icache_dreq_i.vaddr;
-                icache_ex_valid_q    <= icache_dreq_i.ex.valid;
+                icache_ex_valid_q    <= icache_dreq_i.ex;
                 // save the uppermost prediction
-                btb_q                <= btb_prediction[FETCH_WIDTH-1];
-                bht_q                <= bht_prediction[FETCH_WIDTH-1];
+                btb_q                <= btb_prediction[INSTR_PER_FETCH-1];
+                bht_q                <= bht_prediction[INSTR_PER_FETCH-1];
             end
         end
     end
@@ -431,6 +425,7 @@ module frontend (
         .addr_i              ( addr                ), // from re-aligner
         .exception_i         ( icache_ex_valid_q   ), // from I$
         .valid_i             ( instruction_valid   ), // from re-aligner
+        .ready_o             ( instr_queue_ready   ),
         .predict_address_i   ( predict_address     ),
         .taken_i             ( taken               ),
         .cf_type_i           ( cf_type             ),

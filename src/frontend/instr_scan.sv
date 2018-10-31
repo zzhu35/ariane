@@ -33,6 +33,7 @@ module instr_scan (
     output logic        rvc_call_o,
     output logic [63:0] rvc_imm_o
 );
+    logic is_rvc;
     assign is_rvc     = (instr_i[1:0] != 2'b11);
     // check that rs1 is either x1 or x5 and that rd doesn't have the same value
     assign rvi_return_o = rvi_jalr_o & ~instr_i[19] & ~instr_i[18] & ~instr_i[16] & instr_i[15]

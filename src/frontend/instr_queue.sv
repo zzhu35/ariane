@@ -286,14 +286,15 @@ module instr_queue (
             pc_q            <= '0;
             reset_address_q <= 1'b1;
         end else begin
-            idx_ds_q        <= idx_ds_d;
-            idx_is_d        <= idx_is_d;
             pc_q            <= pc_d;
-            reset_address_q <= reset_address_d;
             if (flush_i) begin
                 idx_ds_q        <= 'b1;
                 idx_is_d        <= '0;
                 reset_address_q <= 1'b1;
+            end else begin
+                idx_ds_q        <= idx_ds_d;
+                idx_is_d        <= idx_is_d;
+                reset_address_q <= reset_address_d;
             end
         end
     end

@@ -321,12 +321,14 @@ module instr_realign (
             unaligned_instr_q   <= '0;
         end else begin
             if (valid_i) begin
-                unaligned_q         <= unaligned_d;
                 unaligned_address_q <= unaligned_address_d;
                 unaligned_instr_q   <= unaligned_instr_d;
             end
+
             if (flush_i) begin
                 unaligned_q <= 1'b0;
+            end else if (valid_i) begin
+                unaligned_q         <= unaligned_d;
             end
         end
     end

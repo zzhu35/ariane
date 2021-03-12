@@ -40,6 +40,11 @@ module wt_dcache #(
   input  dcache_req_i_t [2:0]            req_ports_i,
   output dcache_req_o_t [2:0]            req_ports_o,
 
+  // Invalidation request from AXI-ACE
+  input  logic                           mem_inv_req_vld_i, // invalidate request
+  input  logic [riscv::PLEN-1:0]         mem_inv_paddr_i,   // physical address to invalidate
+  output logic                           mem_inv_ack_o,     // invalidate request ack
+
   input  logic                           mem_rtrn_vld_i,
   input  dcache_rtrn_t                   mem_rtrn_i,
   output logic                           mem_data_req_o,
@@ -48,7 +53,7 @@ module wt_dcache #(
 );
 
   // LD unit and PTW
-  localparam NumPorts = 3;
+  localparam NumPorts = 4;
 
   // miss unit <-> read controllers
   logic cache_en;
@@ -71,17 +76,17 @@ module wt_dcache #(
   logic [7:0]                     wr_data_be;
 
   // miss unit <-> controllers/wbuffer
-  logic [NumPorts-1:0]                          miss_req;
-  logic [NumPorts-1:0]                          miss_ack;
-  logic [NumPorts-1:0]                          miss_nc;
-  logic [NumPorts-1:0]                          miss_we;
-  logic [NumPorts-1:0][63:0]                    miss_wdata;
-  logic [NumPorts-1:0][riscv::PLEN-1:0]         miss_paddr;
-  logic [NumPorts-1:0][DCACHE_SET_ASSOC-1:0]    miss_vld_bits;
-  logic [NumPorts-1:0][2:0]                     miss_size;
-  logic [NumPorts-1:0][CACHE_ID_WIDTH-1:0]      miss_id;
-  logic [NumPorts-1:0]                          miss_replay;
-  logic [NumPorts-1:0]                          miss_rtrn_vld;
+  logic [NumPorts-2:0]                          miss_req;
+  logic [NumPorts-2:0]                          miss_ack;
+  logic [NumPorts-2:0]                          miss_nc;
+  logic [NumPorts-2:0]                          miss_we;
+  logic [NumPorts-2:0][63:0]                    miss_wdata;
+  logic [NumPorts-2:0][riscv::PLEN-1:0]         miss_paddr;
+  logic [NumPorts-2:0][DCACHE_SET_ASSOC-1:0]    miss_vld_bits;
+  logic [NumPorts-2:0][2:0]                     miss_size;
+  logic [NumPorts-2:0][CACHE_ID_WIDTH-1:0]      miss_id;
+  logic [NumPorts-2:0]                          miss_replay;
+  logic [NumPorts-2:0]                          miss_rtrn_vld;
   logic [CACHE_ID_WIDTH-1:0]                    miss_rtrn_id;
 
   // memory <-> read controllers/miss unit
@@ -102,6 +107,10 @@ module wt_dcache #(
 
   // wbuffer <-> memory
   wbuffer_t [DCACHE_WBUF_DEPTH-1:0]             wbuffer_data;
+
+  // inval <-> missuinit
+  cache_inval_t                                 inv_req;
+  logic                                         inv_ack;
 
 
 ///////////////////////////////////////////////////////
@@ -140,6 +149,9 @@ module wt_dcache #(
     // from writebuffer
     .tx_paddr_i         ( tx_paddr           ),
     .tx_vld_i           ( tx_vld             ),
+    // from inval on AXI
+    .inv_req_i          ( inv_req            ),
+    .inv_ack_o          ( inv_ack            ),
     // cache memory interface
     .wr_cl_vld_o        ( wr_cl_vld          ),
     .wr_cl_nc_o         ( wr_cl_nc           ),
@@ -259,6 +271,58 @@ module wt_dcache #(
     .tx_paddr_o      ( tx_paddr            ),
     .tx_vld_o        ( tx_vld              )
   );
+
+`ifndef PITON_ARIANE
+///////////////////////////////////////////////////////
+// invalidate unit for snooping on AXI
+///////////////////////////////////////////////////////
+
+  // When OpenPiton interface is enabled, invalidate requests
+  // are issued by the L1.5 on the mem_rtrn_i port. The L1.5
+  // keeps a mirror of the L1 tag table, thus invalidate
+  // requests do not need a look up. On AXI-ACE, instead,
+  // invalidate requests are issued using the physical address,
+  // hence a look up is necessary to determine if and which way
+  // should be invalidated
+
+  // set read port to high priority
+  assign rd_prio[NumPorts-1] = 1'b1;
+
+  wt_dcache_inval #(
+    .ArianeCfg     ( ArianeCfg     )
+  ) i_wt_dcache_inval (
+    .clk_i             ( clk_i                    ),
+    .rst_ni            ( rst_ni                   ),
+    // request port from bus
+    .mem_inv_req_vld_i ( mem_inv_req_vld_i        ),
+    .mem_inv_paddr_i   ( mem_inv_paddr_i          ),
+    .mem_inv_ack_o     ( mem_inv_ack_o            ),
+    // cache read interface
+    .rd_tag_o          ( rd_tag      [NumPorts-1] ),
+    .rd_idx_o          ( rd_idx      [NumPorts-1] ),
+    .rd_off_o          ( rd_off      [NumPorts-1] ),
+    .rd_req_o          ( rd_req      [NumPorts-1] ),
+    .rd_tag_only_o     ( rd_tag_only [NumPorts-1] ),
+    .rd_ack_i          ( rd_ack      [NumPorts-1] ),
+    .rd_data_i         ( rd_data                  ),
+    .rd_vld_bits_i     ( rd_vld_bits              ),
+    .rd_hit_oh_i       ( rd_hit_oh                ),
+    // to missunit
+    .inv_req_o         ( inv_req                  ),
+    .inv_ack_i         ( inv_ack                  )
+  );
+
+`else // !`ifndef PITON_ARIANE
+  assign rd_prio[NumPorts-1] = 1'b0;
+  assign rd_tag[NumPorts-1] = '0;
+  assign rd_idx[NumPorts-1] = '0;
+  assign rd_off[NumPorts-1] = '0;
+  assign rd_req[NumPorts-1] = 1'b0;
+  assign rd_tag_only[NumPorts-1] = 1'b0;
+  assign inv_vld = 1'b0;
+  assign inv_way = '0;
+  assign mem_inv_ack_o = 1'b0;
+`endif
 
 ///////////////////////////////////////////////////////
 // memory arrays, arbitration and tag comparison

@@ -52,6 +52,9 @@ module wt_dcache_missunit #(
   // from writebuffer
   input  logic [DCACHE_MAX_TX-1:0][riscv::PLEN-1:0]  tx_paddr_i,         // used to check for address collisions with read operations
   input  logic [DCACHE_MAX_TX-1:0]                   tx_vld_i,           // used to check for address collisions with read operations
+  // from inval on AXI
+  input  cache_inval_t                               inv_req_i;
+  output logic                                       inv_ack_o;
   // write interface to cache memory
   output logic                                       wr_cl_vld_o,        // writes a full cacheline
   output logic                                       wr_cl_nc_o,         // writes a full cacheline
@@ -87,6 +90,8 @@ module wt_dcache_missunit #(
 
   mshr_t mshr_d, mshr_q;
   logic [$clog2(DCACHE_SET_ASSOC)-1:0] repl_way, inv_way, rnd_way;
+  logic [DCACHE_SET_ASSOC-1:0] inv_req_way_oh;
+  logic [DCACHE_CL_IDX_WIDTH-1:0] inv_req_idx;
   logic mshr_vld_d, mshr_vld_q, mshr_vld_q1;
   logic mshr_allocate;
   logic update_lfsr, all_ways_valid;
@@ -103,7 +108,7 @@ module wt_dcache_missunit #(
   logic [DCACHE_CL_IDX_WIDTH-1:0] cnt_d, cnt_q;
   logic [NumPorts-1:0] miss_req_masked_d, miss_req_masked_q;
 
-  logic inv_vld, inv_vld_all, cl_write_en;
+  logic inv_vld, inv_vld_all, inv_ack, cl_write_en;
   logic load_ack, store_ack, amo_ack;
 
   logic [NumPorts-1:0] mshr_rdrd_collision_d, mshr_rdrd_collision_q;
@@ -268,6 +273,7 @@ module wt_dcache_missunit #(
     amo_ack         = 1'b0;
     inv_vld         = 1'b0;
     inv_vld_all     = 1'b0;
+    inv_ack         = 1'b0;
     sc_fail         = 1'b0;
     sc_pass         = 1'b0;
     miss_rtrn_vld_o ='0;
@@ -309,11 +315,18 @@ module wt_dcache_missunit #(
         default : begin
         end
       endcase
+    end else if (inv_req_i.vld) begin // if (mem_rtrn_vld_i)
+       // Give priority to memory responses over invalidate requests from AXI
+       inv_vld = 1'b1;
+       inv_ack = 1'b1;
     end
   end
 
   // to write buffer
   assign miss_rtrn_id_o           = mem_rtrn_i.tid;
+
+  // to invalidate unit
+  assign inv_ack_o                = inv_ack;
 
 ///////////////////////////////////////////////////////
 // writes to cache memory
@@ -323,9 +336,12 @@ module wt_dcache_missunit #(
   assign wr_cl_nc_o      = mshr_q.nc;
   assign wr_cl_vld_o     = load_ack | (| wr_cl_we_o);
 
+  assign inv_req_way_oh  = (Axi64BitCompliant) ? inv_req_i.way                         :
+			                         dcache_way_bin2oh(mem_rtrn_i.inv.way);
+
   assign wr_cl_we_o      = (flush_en   )  ? '1                                    :
                            (inv_vld_all)   ? '1                                    :
-                           (inv_vld    )   ? dcache_way_bin2oh(mem_rtrn_i.inv.way) :
+                           (inv_vld    )   ? inv_req_way_oh                        :
                            (cl_write_en)   ? dcache_way_bin2oh(mshr_q.repl_way)    :
                                              '0;
 
@@ -334,8 +350,11 @@ module wt_dcache_missunit #(
                            (cl_write_en)   ? dcache_way_bin2oh(mshr_q.repl_way)    :
                                               '0;
 
+  assign inv_req_idx     = (Axi64BitCompliant) ? inv_req_i.idx[DCACHE_INDEX_WIDTH-1:DCACHE_OFFSET_WIDTH]      :
+			                         mem_rtrn_i.inv.idx[DCACHE_INDEX_WIDTH-1:DCACHE_OFFSET_WIDTH];
+
   assign wr_cl_idx_o     = (flush_en) ? cnt_q                                                        :
-                           (inv_vld)  ? mem_rtrn_i.inv.idx[DCACHE_INDEX_WIDTH-1:DCACHE_OFFSET_WIDTH] :
+                           (inv_vld)  ? inv_req_idx                                                  :
                                         mshr_q.paddr[DCACHE_INDEX_WIDTH-1:DCACHE_OFFSET_WIDTH];
 
   assign wr_cl_tag_o     = mshr_q.paddr[DCACHE_TAG_WIDTH+DCACHE_INDEX_WIDTH-1:DCACHE_INDEX_WIDTH];

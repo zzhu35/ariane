@@ -40,6 +40,7 @@
 [submodule "src/axi_riscv_atomics"]
 	path = src/axi_riscv_atomics
 	url = git@github.com:zzhu35/axi_riscv_atomics.git
+	branch = spandex
 [submodule "src/riscv-dbg"]
 	path = src/riscv-dbg
 	url = https://github.com/pulp-platform/riscv-dbg.git

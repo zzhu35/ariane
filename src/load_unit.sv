@@ -72,6 +72,8 @@ module load_unit import ariane_pkg::*; #(
     assign req_port_o.address_tag   = paddr_i[ariane_pkg::DCACHE_TAG_WIDTH     +
                                               ariane_pkg::DCACHE_INDEX_WIDTH-1 :
                                               ariane_pkg::DCACHE_INDEX_WIDTH];
+    // assign dynamic coherence specialization
+    assign req_port_o.dcs_data = lsu_ctrl_i.dcs_data;
     // directly output an exception
     assign ex_o = ex_i;
 

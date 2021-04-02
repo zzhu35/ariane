@@ -20,7 +20,7 @@ package ariane_axi;
     // used in axi_adapter.sv
     typedef enum logic { SINGLE_REQ, CACHE_LINE_REQ } ad_req_t;
 
-    localparam UserWidth = 1;
+    localparam UserWidth = 10;
     localparam AddrWidth = 64;
     localparam DataWidth = 64;
     localparam StrbWidth = DataWidth / 8;
@@ -45,6 +45,7 @@ package ariane_axi;
         axi_pkg::qos_t    qos;
         axi_pkg::region_t region;
         axi_pkg::atop_t   atop;
+        user_t            user;
     } aw_chan_t;
 
     // AW Channel - Slave
@@ -93,6 +94,7 @@ package ariane_axi;
         axi_pkg::prot_t   prot;
         axi_pkg::qos_t    qos;
         axi_pkg::region_t region;
+        user_t            user;
     } ar_chan_t;
 
     // AR Channel - Slave

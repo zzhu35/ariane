@@ -92,6 +92,9 @@ module issue_read_operands #(
     logic [TRANS_ID_BITS-1:0] trans_id_n, trans_id_q;
     fu_op operator_n, operator_q; // operation to perform
     fu_t  fu_n,       fu_q; // functional unit to use
+    logic use_dcs_n,  use_dcs_q;
+    logic aq_n, aq_q;
+    logic rl_n, rl_q;
 
     // forwarding signals
     logic forward_rs1, forward_rs2, forward_rs3;
@@ -107,6 +110,9 @@ module issue_read_operands #(
     assign fu_data_o.operator  = operator_q;
     assign fu_data_o.trans_id  = trans_id_q;
     assign fu_data_o.imm       = imm_q;
+    assign fu_data_o.use_dcs   = use_dcs_q;
+    assign fu_data_o.aq        = aq_q;
+    assign fu_data_o.rl        = rl_q;
     assign alu_valid_o         = alu_valid_q;
     assign branch_valid_o      = branch_valid_q;
     assign lsu_valid_o         = lsu_valid_q;
@@ -198,6 +204,9 @@ module issue_read_operands #(
         imm_n      = is_imm_fpr(issue_instr_i.op) ? operand_c_regfile : issue_instr_i.result;
         trans_id_n = issue_instr_i.trans_id;
         fu_n       = issue_instr_i.fu;
+        use_dcs_n  = issue_instr_i.use_dcs;
+        aq_n       = issue_instr_i.aq;
+        rl_n       = issue_instr_i.rl;
         operator_n = issue_instr_i.op;
         // or should we forward
         if (forward_rs1) begin
@@ -418,6 +427,9 @@ module issue_read_operands #(
             operand_b_q           <= '{default: 0};
             imm_q                 <= '0;
             fu_q                  <= NONE;
+            use_dcs_q             <= '0;
+            aq_q                  <= '0;
+            rl_q                  <= '0;
             operator_q            <= ADD;
             trans_id_q            <= '0;
             pc_o                  <= '0;
@@ -428,6 +440,9 @@ module issue_read_operands #(
             operand_b_q           <= operand_b_n;
             imm_q                 <= imm_n;
             fu_q                  <= fu_n;
+            use_dcs_q             <= use_dcs_n;
+            aq_q                  <= aq_n;
+            rl_q                  <= rl_n;
             operator_q            <= operator_n;
             trans_id_q            <= trans_id_n;
             pc_o                  <= issue_instr_i.pc;

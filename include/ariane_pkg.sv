@@ -476,6 +476,9 @@ package ariane_pkg;
         logic [63:0]              operand_b;
         logic [63:0]              imm;
         logic [TRANS_ID_BITS-1:0] trans_id;
+        logic                     use_dcs;
+        logic                     aq;
+        logic                     rl;
     } fu_data_t;
 
     function automatic logic is_branch (input fu_op op);
@@ -561,6 +564,13 @@ package ariane_pkg;
     endfunction
 
     typedef struct packed {
+        logic                     dcs_en;
+        logic                     use_owner_pred;
+        logic [1:0]               dcs;
+        logic [3:0]               cid;
+    } dcs_data_t;
+
+    typedef struct packed {
         logic                     valid;
         logic [riscv::VLEN-1:0]   vaddr;
         logic                     overflow;
@@ -569,6 +579,9 @@ package ariane_pkg;
         fu_t                      fu;
         fu_op                     operator;
         logic [TRANS_ID_BITS-1:0] trans_id;
+        dcs_data_t                dcs_data;
+        logic                     aq;
+        logic                     rl;
     } lsu_ctrl_t;
 
     // ---------------
@@ -594,6 +607,7 @@ package ariane_pkg;
         logic [REG_ADDR_SIZE-1:0] rs1;           // register source address 1
         logic [REG_ADDR_SIZE-1:0] rs2;           // register source address 2
         logic [REG_ADDR_SIZE-1:0] rd;            // register destination address
+        logic                     sync;
         logic [63:0]              result;        // for unfinished instructions this field also holds the immediate,
                                                  // for unfinished floating-point that are partly encoded in rs2, this field also holds rs2
                                                  // for unfinished floating-point fused operations (FMADD, FMSUB, FNMADD, FNMSUB)
@@ -606,6 +620,9 @@ package ariane_pkg;
         branchpredict_sbe_t       bp;            // branch predict scoreboard data structure
         logic                     is_compressed; // signals a compressed instructions, we need this information at the commit stage if
                                                  // we want jump accordingly e.g.: +4, +2
+        logic                     use_dcs;       // 1 for load/store using dcs
+        logic                     aq;
+        logic                     rl;
     } scoreboard_entry_t;
 
     // --------------------
@@ -685,6 +702,8 @@ package ariane_pkg;
         logic [1:0]  size;      // 2'b10 --> word operation, 2'b11 --> double word operation
         logic [63:0] operand_a; // address
         logic [63:0] operand_b; // data as layouted in the register
+        logic        aq;
+        logic        rl;
     } amo_req_t;
 
     // AMO response coming from cache.
@@ -704,6 +723,7 @@ package ariane_pkg;
         logic [1:0]                    data_size;
         logic                          kill_req;
         logic                          tag_valid;
+        dcs_data_t                     dcs_data;
     } dcache_req_i_t;
 
     typedef struct packed {

@@ -80,6 +80,9 @@ module load_store_unit #(
     logic      pop_st;
     logic      pop_ld;
 
+    // dynamic coherence specialization data
+    dcs_data_t                dcs_data;
+
     // ------------------------------
     // Address Generation Unit (AGU)
     // ------------------------------
@@ -89,7 +92,28 @@ module load_store_unit #(
     logic                     overflow;
     logic [7:0]               be_i;
 
-    assign vaddr64 = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));
+    // assign vaddr64 = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));
+    always_comb begin
+        if(fu_data_i.use_dcs == 1'b1) begin
+            dcs_data.dcs_en = 1'b1;
+            dcs_data.dcs    = fu_data_i.imm[10:9];
+            dcs_data.cid    = fu_data_i.imm[ 8:5];
+            if(fu_data_i.imm[4] == 1'b1) begin
+                // use owner prediction
+                dcs_data.use_owner_pred = 1'b1;
+                vaddr64 = $unsigned($signed({ {60 {fu_data_i.imm[3]}}, fu_data_i.imm[3:0] }) + $signed(fu_data_i.operand_a));
+            end else begin
+                // no owner prediction
+                dcs_data.use_owner_pred = 1'b0;
+                vaddr64 = $unsigned($signed({ {56 {fu_data_i.imm[7]}}, fu_data_i.imm[8:5], fu_data_i.imm[3:0] }) + $signed(fu_data_i.operand_a));
+            end
+        end else begin
+            dcs_data = '0;
+            vaddr64 = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));
+        end
+        //vaddr64 = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));///////////////////////////////////////// for testing
+    end
+
     assign vaddr_i = vaddr64[riscv::VLEN-1:0];
     // we work with SV39, so if VM is enabled, check that all bits [64:riscv::38] are equal
     assign overflow = !((&vaddr64[63:riscv::VLEN-1]) == 1'b1 || (|vaddr64[63:riscv::VLEN-1]) == 1'b0);
@@ -370,7 +394,7 @@ module load_store_unit #(
     // new data arrives here
     lsu_ctrl_t lsu_req_i;
 
-    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operator, fu_data_i.trans_id};
+    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operator, fu_data_i.trans_id, dcs_data, fu_data_i.aq, fu_data_i.rl};
 
     lsu_bypass lsu_bypass_i (
         .lsu_req_i          ( lsu_req_i   ),
